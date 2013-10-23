@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+      <meta charset=utf-8>
+      <script type="text/javascript" src='http://ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js'></script>
+      <script type="text/javascript" src="js/highcharts.js"></script>
+</head>
+<body>
+<div id='container'></div>
+
+<script type="text/javascript">
+
+var chart;
+
+var ONE_DAY = 24 * 60 * 60 * 1000;
+
+function draw() 
+{
+    // グラフオプションを指定
+    var options = 
+    {
+        
+        // 出力先を指定
+        chart :{
+            renderTo : "container",
+//            backgroundColor : "#ffa07a",  図全体色
+//            plotBackgroundColor : "#ff0000", プロット部分
+        },
+
+        // タイトルを指定
+        title:{text:""},
+        // X軸のラベル
+        xAxis:{
+            title:{text:"日付"},
+            type:"datetime",
+//            labels:{
+//                formatter: function() { 
+////                    return Highcharts.dateFormat('%m/%d', this.value);
+//                    return this.value;
+//                }
+//            },
+
+            tickPixelInterval: 100,
+
+            
+            plotBands: [{ // visualize the weekend
+                from: 4.5,
+                to: 6.5,
+                color: 'rgba(68, 170, 213, .2)'
+            }]
+
+        },
+        
+        // Y軸のラベル
+        yAxis:[
+            {
+                title:{text:"kg"},
+                max:150,
+                min:30,
+                allowDecimals:"false"
+            },
+            {
+                title:{text:"%"},
+                max:100,
+                min:00,
+                allowDecimals:"false",
+                opposite:true
+            }
+        ],
+        
+        // 判例
+        legend:{
+        },
+        
+
+        // データ系列を作成
+        series: [
+            {
+                name: "体重", yAxis:0, 
+                data:(function(){
+                    // generate an array of random data
+                    var data = [],
+                        time = (new Date()).getTime(),
+                        i;
+
+                    for (i = 0; i < 7; i++) {
+                        data.push({
+                            x: i * ONE_DAY,
+                            y: 25+ i
+                        });
+                    }
+                    return data;
+                })()
+            },
+            {name: "体脂肪", yAxis:1, data: [30.2, 33,   29.3, 31.0, 31.8]}
+        ]
+        
+//        series: [{
+//            name: 'Random data',
+//            data: (function() {
+//                // generate an array of random data
+//                var data = [],
+//                    time = (new Date()).getTime(),
+//                    i;
+//
+//                for (i = -19; i <= 0; i++) {
+//                    data.push({
+//                        x: time + i * 1000,
+//                        y: Math.random()
+//                    });
+//                }
+//                return data;
+//            })()
+//        }]        
+        
+    };
+
+    // グラフを作成
+    chart = new Highcharts.Chart(options);
+}
+
+// ページがロードされた後に、グラフを出力する
+document.body.onload = draw();
+
+</script>
+
+</body>
+</html>
