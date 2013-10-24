@@ -20,57 +20,70 @@ var ONE_DAY = 24 * 3600 * 1000;
     
 function draw() 
 {
-Highcharts.dateFormats = {
-        W: function (timestamp) {
-            var date = new Date(timestamp),
-                day = date.getUTCDay() == 0 ? 7 : date.getUTCDay(),
-                dayNumber;
-            date.setDate(date.getUTCDate() + 4 - day);
-            dayNumber = Math.floor((date.getTime() - new Date(date.getUTCFullYear(), 0, 1, -6)) / 86400000);
-            return 1 + Math.floor(dayNumber / 7);
-            
-        }
-    }    
-    
     // グラフオプションを指定
     var options = 
-    {
+    { 
         chart: {
             renderTo: 'container'
         },
-        
         title: {
-            text: 'Custom date format'
+            text: null
         },
 
-        xAxis: {
-            alternateGridColor: '#f0f0ff',
-            type: 'datetime',
-            dateTimeLabelFormats:{
-                month: '%b \'%y'
-            },
-            
+        // X軸
+        xAxis: {            
+            alternateGridColor: '#f0f0ff',  // 1つおきのグリッド色
+            type: 'datetime',               // 軸の値タイプ
             gridLineColor: "#dddddd",
             gridLineWidth: '1',
             
+            labels: {
+                formatter: function(){
+                    //土日だけ文字色を変更させる
+                    if ('Sat' === Highcharts.dateFormat("%a", this.value)) {
+                        return '<span style="color: #68ACE4;">' + Highcharts.dateFormat("%e", this.value) + '</span>';
+                    }
+                    if ('Sun' === Highcharts.dateFormat("%a", this.value)) {
+                        return '<span style="color: #D9615C;">' + Highcharts.dateFormat("%e", this.value) + '</span>';
+                    }
+                    return '<span style="color: #A1A5BA;">' + Highcharts.dateFormat("%e", this.value) + '</span>';
+                    
+                },
+            },
             
-//            tickInterval: 7 * 24 * 36e5, // one week
-        },
-        
-        yAxis: {
-            gridLineDashStyle: 'dot',
-            gridLineColor: '#101010'
-            
+            tickInterval: ONE_DAY,
+            min: new Date().getTime() - (ONE_DAY * 7),
+            max: new Date().getTime()
         },
 
+        yAxis: {
+            gridLineDashStyle: 'dot',
+            gridLineColor: '#101010',
+            
+            plotLines : 
+            [
+                {
+                    value : 70,
+                    color : 'pink',
+                    width : 2,
+                }
+            ]
+            
+        },
+                
+
+    // データをハッシュに変換
         series: [{
             name: '体重',
-            data: [29.9, 71.5, 106.4, 129.2, 144.0, 176.0, 135.6, 148.5, 216.4, 194.1, 95.6, 54.4],
-            pointInterval: 7 * 24 * 36e5,
-            pointStart: Date.UTC(2013, 0, 7)
-            
+            data: [
+                29.9,
+                71.5,
+            ],
+            pointInterval: ONE_DAY,
+          pointStart: new Date().getTime() - (ONE_DAY * 7)
         }]
-	};
+    }
+
 
     // グラフを作成
     chart = new Highcharts.Chart(options);
