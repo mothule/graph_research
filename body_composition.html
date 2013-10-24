@@ -9,111 +9,68 @@
 <div id='container'></div>
 
 <script type="text/javascript">
+"use strict";
+
 
 var chart;
 
-var ONE_DAY = 24 * 60 * 60 * 1000;
+var ONE_DAY = 24 * 3600 * 1000;
 
+
+    
 function draw() 
 {
+Highcharts.dateFormats = {
+        W: function (timestamp) {
+            var date = new Date(timestamp),
+                day = date.getUTCDay() == 0 ? 7 : date.getUTCDay(),
+                dayNumber;
+            date.setDate(date.getUTCDate() + 4 - day);
+            dayNumber = Math.floor((date.getTime() - new Date(date.getUTCFullYear(), 0, 1, -6)) / 86400000);
+            return 1 + Math.floor(dayNumber / 7);
+            
+        }
+    }    
+    
     // グラフオプションを指定
     var options = 
     {
+        chart: {
+            renderTo: 'container'
+        },
         
-        // 出力先を指定
-        chart :{
-            renderTo : "container",
-//            backgroundColor : "#ffa07a",  図全体色
-//            plotBackgroundColor : "#ff0000", プロット部分
+        title: {
+            text: 'Custom date format'
         },
 
-        // タイトルを指定
-        title:{text:""},
-        // X軸のラベル
-        xAxis:{
-            title:{text:"日付"},
-            type:"datetime",
-//            labels:{
-//                formatter: function() { 
-////                    return Highcharts.dateFormat('%m/%d', this.value);
-//                    return this.value;
-//                }
-//            },
-
-            tickPixelInterval: 100,
-
+        xAxis: {
+            alternateGridColor: '#f0f0ff',
+            type: 'datetime',
+            dateTimeLabelFormats:{
+                month: '%b \'%y'
+            },
             
-            plotBands: [{ // visualize the weekend
-                from: 4.5,
-                to: 6.5,
-                color: 'rgba(68, 170, 213, .2)'
-            }]
-
+            gridLineColor: "#dddddd",
+            gridLineWidth: '1',
+            
+            
+//            tickInterval: 7 * 24 * 36e5, // one week
         },
         
-        // Y軸のラベル
-        yAxis:[
-            {
-                title:{text:"kg"},
-                max:150,
-                min:30,
-                allowDecimals:"false"
-            },
-            {
-                title:{text:"%"},
-                max:100,
-                min:00,
-                allowDecimals:"false",
-                opposite:true
-            }
-        ],
-        
-        // 判例
-        legend:{
+        yAxis: {
+            gridLineDashStyle: 'dot',
+            gridLineColor: '#101010'
+            
         },
-        
 
-        // データ系列を作成
-        series: [
-            {
-                name: "体重", yAxis:0, 
-                data:(function(){
-                    // generate an array of random data
-                    var data = [],
-                        time = (new Date()).getTime(),
-                        i;
-
-                    for (i = 0; i < 7; i++) {
-                        data.push({
-                            x: i * ONE_DAY,
-                            y: 25+ i
-                        });
-                    }
-                    return data;
-                })()
-            },
-            {name: "体脂肪", yAxis:1, data: [30.2, 33,   29.3, 31.0, 31.8]}
-        ]
-        
-//        series: [{
-//            name: 'Random data',
-//            data: (function() {
-//                // generate an array of random data
-//                var data = [],
-//                    time = (new Date()).getTime(),
-//                    i;
-//
-//                for (i = -19; i <= 0; i++) {
-//                    data.push({
-//                        x: time + i * 1000,
-//                        y: Math.random()
-//                    });
-//                }
-//                return data;
-//            })()
-//        }]        
-        
-    };
+        series: [{
+            name: '体重',
+            data: [29.9, 71.5, 106.4, 129.2, 144.0, 176.0, 135.6, 148.5, 216.4, 194.1, 95.6, 54.4],
+            pointInterval: 7 * 24 * 36e5,
+            pointStart: Date.UTC(2013, 0, 7)
+            
+        }]
+	};
 
     // グラフを作成
     chart = new Highcharts.Chart(options);
