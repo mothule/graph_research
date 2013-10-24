@@ -9,6 +9,8 @@
 <div id='container'></div>
 
 <script type="text/javascript">
+"use strict";
+
 
 var chart;
 
@@ -42,23 +44,33 @@ Highcharts.dateFormats = {
         },
 
         xAxis: {
-            alternateGridColor: '#FDFFD5',
+            alternateGridColor: '#f0f0ff',
             type: 'datetime',
             dateTimeLabelFormats:{
-                day:'%b'
-            }
+                month: '%b \'%y'
+            },
+            
+            gridLineColor: "#dddddd",
+            gridLineWidth: '1',
+            
+            
 //            tickInterval: 7 * 24 * 36e5, // one week
+        },
+        
+        yAxis: {
+            gridLineDashStyle: 'dot',
+            gridLineColor: '#101010'
+            
         },
 
         series: [{
+            name: '体重',
             data: [29.9, 71.5, 106.4, 129.2, 144.0, 176.0, 135.6, 148.5, 216.4, 194.1, 95.6, 54.4],
             pointInterval: 7 * 24 * 36e5,
             pointStart: Date.UTC(2013, 0, 7)
             
         }]
-       
-        
-    };
+	};
 
     // グラフを作成
     chart = new Highcharts.Chart(options);
