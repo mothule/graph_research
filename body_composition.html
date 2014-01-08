@@ -2,97 +2,16 @@
 <html>
 <head>
       <meta charset=utf-8>
+      <link type="text/css" rel="stylesheet" href="graph.css"  />
       <script type="text/javascript" src='http://ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js'></script>
       <script type="text/javascript" src="js/highcharts.js"></script>
+      <script type="text/javascript" src="test.js"></script>
+      
 </head>
 <body>
-<div id='container'></div>
-
-<script type="text/javascript">
-"use strict";
-
-
-var chart;
-
-var ONE_DAY = 24 * 3600 * 1000;
-
-
-    
-function draw() 
-{
-    // グラフオプションを指定
-    var options = 
-    { 
-        chart: {
-            renderTo: 'container'
-        },
-        title: {
-            text: null
-        },
-
-        // X軸
-        xAxis: {            
-            alternateGridColor: '#f0f0ff',  // 1つおきのグリッド色
-            type: 'datetime',               // 軸の値タイプ
-            gridLineColor: "#dddddd",
-            gridLineWidth: '1',
-            
-            labels: {
-                formatter: function(){
-                    //土日だけ文字色を変更させる
-                    if ('Sat' === Highcharts.dateFormat("%a", this.value)) {
-                        return '<span style="color: #68ACE4;">' + Highcharts.dateFormat("%e", this.value) + '</span>';
-                    }
-                    if ('Sun' === Highcharts.dateFormat("%a", this.value)) {
-                        return '<span style="color: #D9615C;">' + Highcharts.dateFormat("%e", this.value) + '</span>';
-                    }
-                    return '<span style="color: #A1A5BA;">' + Highcharts.dateFormat("%e", this.value) + '</span>';
-                    
-                },
-            },
-            
-            tickInterval: ONE_DAY,
-            min: new Date().getTime() - (ONE_DAY * 7),
-            max: new Date().getTime()
-        },
-
-        yAxis: {
-            gridLineDashStyle: 'dot',
-            gridLineColor: '#101010',
-            
-            plotLines : 
-            [
-                {
-                    value : 70,
-                    color : 'pink',
-                    width : 2,
-                }
-            ]
-            
-        },
-                
-
-    // データをハッシュに変換
-        series: [{
-            name: '体重',
-            data: [
-                29.9,
-                71.5,
-            ],
-            pointInterval: ONE_DAY,
-          pointStart: new Date().getTime() - (ONE_DAY * 7)
-        }]
-    }
-
-
-    // グラフを作成
-    chart = new Highcharts.Chart(options);
-}
-
-// ページがロードされた後に、グラフを出力する
-document.body.onload = draw();
-
-</script>
-
+<!--    <iframe src="graph.html" height="480" width="480">inline frame 未対応</iframe>-->
+        <div id='container'></div>
+        <div id="centerLine"></div>
+        <script type="text/javascript" src="graph.js"></script>
 </body>
 </html>
