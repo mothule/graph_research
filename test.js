@@ -39,6 +39,28 @@ function getDummyFat(now)
     return data;
 }
 
+function getDummyCalorie(now)
+{
+    var days = [];
+    var currentDay = new Date(now);
+    currentDay.setFullYear( currentDay.getFullYear()-1 );
+    for(var i =0; i < 365; ++i){
+        days.push(new Date(currentDay));
+        currentDay.setDate( currentDay.getDate() + 1);
+    }
+
+    var color = 'pink';
+    var data = [];
+    for(var i=0; i<365; i++){
+        var weight = Math.floor(Math.random()*90000) / 10;
+        data.push({ color : color, x : days[i], y : weight});
+    }
+    
+    
+    
+    return data;
+}
+
 
 function getMinMaxAvg(datas)
 {
