@@ -30,6 +30,13 @@ body {
     position: fixed;
     top: 0px;
 }
+#debug{
+    background-color: rgba(157,157,157,255);
+    position:fixed;
+    bottom: 2%;
+    left:50%;
+    font-size: 0.8em;
+}
 
 
 /**

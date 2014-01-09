@@ -11,15 +11,17 @@
  *****************************/
 var weights;
 var fats;
+var calories;
 
 /******************************
  * 定数
  *****************************/
 var ONE_DAY = 24 * 3600 * 1000;
-var PICK_LINE_WIDTH = 5;
-var XAXIS_WIDTH = 55; // X軸の要素幅(日づけの幅）
+var PICK_LINE_WIDTH = 4;
+var XAXIS_WIDTH = 56; // X軸の要素幅(日づけの幅）
 var CHART_MARGIN_SIDE = 30; // チャートの両サイドのマージン
-
+var COLUMN_MARGIN_SIDE = 26;
+var DAY_RANGE = 365;
 
 /******************************
  * グローバル変数
@@ -34,6 +36,7 @@ var targetLineEndDate;   // 目標体重ラインの終了日
 var beginDate;
 var endDate;
 var containerWidth; // コンテナの幅
+
 
 
 
@@ -74,7 +77,7 @@ function onPreInitializeGraph()
     console.log('dispWidth:'+dispWidth);
     
     // データの取得開始日と終了日を取得
-    beginDate = now.getTime() - (365 * ONE_DAY);
+    beginDate = now.getTime() - (DAY_RANGE * ONE_DAY);
     endDate   = now.getTime();
 
     
@@ -82,12 +85,14 @@ function onPreInitializeGraph()
     targetLineBeginDate = truncateTime( new Date(2014, 1-1, 7) );
     targetLineEndDate = truncateTime( new Date(2014,  2-1, 14) );
 
-    containerWidth = 2*CHART_MARGIN_SIDE + XAXIS_WIDTH * 365;
+    containerWidth = COLUMN_MARGIN_SIDE + 2*CHART_MARGIN_SIDE + XAXIS_WIDTH * DAY_RANGE;
     $('#container').css('width', containerWidth );
     
     
+    // テストデータ構築
     weights = getDummyWeight(now);
     fats = getDummyFat(now);
+    calories = getDummyCalorie(now);
     
     
     
@@ -123,6 +128,19 @@ function onInitializeGraph()
     // グラフオプションを指定
     var options = 
     {
+        plotOptions: {
+            series: { 
+                animation: false,
+                enableMouseTracking: false
+            },
+            
+            // 棒グラフで選択した時の色
+            column : {
+                states : {
+                    select : { color : 'red', borderColor: 'red' }
+                }
+            }
+        },
         credits : {
             enabled : false // Highchartクレジットを非表示
         },
@@ -140,17 +158,9 @@ function onInitializeGraph()
             }
          
         },
-        title: {
-            text: null
-        },
-        tooltip: {
-            enabled: false
-        },
-        
-        scrollbar : {
-            enabled : true
-        },
-
+        title: { text: null },
+        tooltip: { enabled: false },
+        scrollbar : { enabled : true },
 
 
         // X軸
@@ -195,57 +205,51 @@ function onInitializeGraph()
                 gridLineWidth:0,
                 labels : { enabled : false }, // ラベル非表示
                 max : 100
+            },
+            
+            {// 消費カロリー, 表示してもスクロールすると見えなくなるため、全部非表示
+                title : { text : null },
+                gridLineWidth:0,
+                labels : { enabled : false }, // ラベル非表示
             }
         ],
                 
 
     // データをハッシュに変換
         series: [
-            {
-                yAxis:0,
-                name: '体重',
-                zIndex : 1,
-                color:'#fcb3bf',
-                data: weights
-//                [
-//                    [getDay(1), 80],
-//                    [getDay(2), 81],
-//                    [getDay(3), 82],
-//                    [getDay(4), 85],
-//                    [getDay(5), 83],
-//                    [getDay(6), 86],
-//                    [getDay(7), 84]
-//                ]
-            },
-            
-            {// 体脂肪
-                yAxis:1,
-                name : '体脂肪',
-                zIndex : 2,
-                color:'#2020a0',
-                data: fats
-//                [
-//                    [getDay(1), 30.0],
-//                    [getDay(2), 30.1],
-//                    [getDay(3), 23.2],
-//                    [getDay(4), 30.5],
-//                    [getDay(5), 30.3],
-//                    [getDay(6), 30.6],
-//                    [getDay(7), 30.4]
-//                ]
-            },
-            {// 目標日までの理想線を破線ピンク色で表示
-                yAxis:0,
-                name : '目標線',
+//            {// 体重
+//                yAxis:0,
+//                name: '体重',
+//                zIndex : 1,
+//                color:'#fcb3bf',
+//                data: weights
+//            },
+//            
+//            {// 体脂肪
+//                yAxis:1,
+//                name : '体脂肪',
+//                zIndex : 2,
+//                color:'#2020a0',
+//                data: fats
+//            },
+//            {// 目標日までの理想線を破線ピンク色で表示
+//                yAxis:0,
+//                name : '目標線',
+//                color : 'pink',
+//                dashStyle : 'dot',
+//                marker:{ radius:3 },
+//                zIndex : 0,
+//                data:[84, 50],
+//                pointStart      : targetLineBeginDate.getTime(),
+//                pointInterval   : targetLineEndDate.getTime() - targetLineBeginDate.getTime()
+//            },
+            {// 消費カロリー
+                yAxis:2,
+                name : '消費カロリー',
                 color : 'pink',
-                dashStyle : 'dot',
-                marker:{ radius:3 },
-                zIndex : 0,
-                data:[84, 50],
-                pointStart      : targetLineBeginDate.getTime(),
-                pointInterval   : targetLineEndDate.getTime() - targetLineBeginDate.getTime()
-                
-            }
+                type : 'column',
+                data : calories
+            }            
         ]
     };
 
@@ -266,17 +270,19 @@ function getDay(day){
  * グラフの初期化処理が呼ばれた後に呼ばれます<br>
  * グラフの読み込み処理が完了した場合は、{onChartLoad}になります。
  */
+    var prevDate = 0;;
 function onPostInitializeGraph()
 {
     console.log('Begin onPostInitializeGraph');
+    
     
     $(window).scroll(function(){
         var log = '';
 
         // スクロール位置をカーソルとし、ピッカーの位置にある日付を算出します
         var scrollLeft = $(window).scrollLeft();
-        var pickPos = (scrollLeft-CHART_MARGIN_SIDE) + ((dispWidth / 2) - (PICK_LINE_WIDTH / 2));
-        var rate = ONE_DAY / XAXIS_WIDTH;
+        var pickPos = (scrollLeft-(CHART_MARGIN_SIDE+COLUMN_MARGIN_SIDE)) + (dispWidth/2) - (PICK_LINE_WIDTH/2);
+        var rate = ONE_DAY / (XAXIS_WIDTH-0.091); // 棒グラフだと原因不明でズレてしまう。
         var ms = beginDate + (pickPos * rate);
         var date = new Date(ms);
         
@@ -284,9 +290,33 @@ function onPostInitializeGraph()
         if(date.getHours() > 12){
             date.setDate(date.getDate()+1);
         }
+        log += ' Current Selected Date : ' + date.toLocaleString();
         date = truncateTime(date);
         
-        log += ' Current Selected Date : ' + date.toLocaleString();
+        drawDebugLabel(date.toLocaleString());
+        
+        
+        var series = chart.series[0];
+        var datas = [];
+        datas = series.data;
+
+        var diffTime = date.getTime() - beginDate;
+
+        var index = diffTime / ONE_DAY;
+        console.log(index);
+        
+        var data = datas[index];
+        if(prevDate !== data.category){
+            prevDate = data.category;
+            
+//            var ddd = new Date(data.category);
+//            console.log('日付'+ddd.toLocaleString());
+//            data.update({color:'red'},false,false);
+            if(!data.selected){
+                data.select();
+            }
+        }
+
         console.log(log);
     });
     
@@ -323,10 +353,26 @@ function onChartLoad(event){
     drawYAxisLabel(1,minMaxAvg['avg'],true,color); // 平均値
     drawYAxisLabel(1,minMaxAvg['max'],true,color); // 最大値
 
+
+    // 消費カロリー用Y軸ラベルの描画
+    color = '#2020a0';
+//    minMaxAvg = getMinMaxAvg(calories);
+//    drawYAxisLabel(0,minMaxAvg['min'],false,color); // 最小値
+//    drawYAxisLabel(0,minMaxAvg['avg'],false,color); // 平均値
+//    drawYAxisLabel(0,minMaxAvg['max'],false,color); // 最大値
+
+
+
     console.log('End onChartLoad');
 }
 
 
+
+
+
+function drawDebugLabel(text){
+    $('#debug').text(text);
+}
 
 /**
  * 選択している領域を示す線の描画
