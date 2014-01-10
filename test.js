@@ -62,17 +62,21 @@ function getDummyCalorie(now)
 }
 
 
-function getMinMaxAvg(datas)
+function getMinMaxAvg(datas, isMap)
 {
-    var result = {};
-
     var min = Number.MAX_VALUE;
     var max = 0;
     var avg = 0;
     
     var len = datas.length;
     for(var i = 0; i < len; ++i){
-        var data = datas[i][1];
+        var data;
+        if(isMap){
+            data = datas[i]['y'];
+        }else{
+            data = datas[i][1];
+        }
+        
         min = Math.min(min, data);
         max = Math.max(max, data);
         avg += data;
