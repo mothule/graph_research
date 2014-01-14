@@ -36,19 +36,40 @@ var XAXIS_LABEL_SAT_COLOR       = "#68ACE4";        //!< X軸ラベルの土曜�
 var XAXIS_LABEL_SUN_COLOR       = "#D9615C";        //!< X軸ラベルの日曜日色
 var YAXIS_LABEL_FONT_SIZE       = 4;                //!< Y軸ラベルのフォントサイズ
 
+// グラフ種類列挙
+var GRAPH_TYPE_LINE = 0;                            //!< グラフ種類_折れ線
+var GRAPH_TYPE_COLUMN = 1;                          //!< グラフ種類_棒グラフ
+
+// グラフポイント間の距離算出用調整値 列挙
+// 棒グラフだと原因不明でズレてしまうため用意.
+var XAXIS_WIDTH_ADJUST_LINE     = 0;                //!< グラフポイント間の調整値_折れ線
+var XAXIS_WIDTH_ADJUST_COLUMN   = -0.091;           //!< グラフポイント間の調整値_棒グラフ
+
 
 /******************************
- * グローバル変数
+ * グローバル変数(js内で使用する)
  *****************************/
 var chart;                  //!< チャートインスタンス
 var now;                    //!< 今の日付（年、月、日のみ）
 var dispWidth;              //!< ブラウザの幅
 var dispHeight;             //!< ブラウザの高さ
-var targetLineBeginDate;    //!< 目標体重ラインの開始日
-var targetLineEndDate;      //!< 目標体重ラインの終了日
 var beginDate;              //!< データの取得開始日
 var endDate;                //!< データの取得終了日
 var contentWidth;           //!< コンテナの幅
+var xAxisWidthAdjust;       //!< グラフのポイント間の距離算出用調整値(XAXIS_WIDTH_ADJUST_***)
+var series;
+var yAxisLabelInfos;        //!< Y軸ラベルの情報一覧
+
+/******************************
+ * グローバル変数(Androidから受け取る)
+ *****************************/
+var graphType = 0;          //!< グラフの種類（GRAPH_TYPE_***）
+var dateIntervalType = 0;   //!< 0:日 1:週 2:月
+var targetLineBeginDate;    //!< 目標体重ラインの開始日
+var targetLineEndDate;      //!< 目標体重ラインの終了日
+var graphDatas;             //!< グラフのデータ.
+var graphDataType;          //!< グラフのデータの種類. 0:XY 1:XY with Color
+
 
 
 // エントリー関数
@@ -96,6 +117,17 @@ function onPreInitializeGraph()
     // コンテンツ幅：棒グラフマージン、チャートマージン、チャート幅
     contentWidth = COLUMN_MARGIN_SIDE + 2*CHART_MARGIN_SIDE + XAXIS_WIDTH * DAY_RANGE;
     $('#container').css('width', contentWidth );
+    
+
+    graphType = GRAPH_TYPE_COLUMN;
+    
+    // X軸値の間の調整値
+    if(graphType===GRAPH_TYPE_LINE){
+        xAxisWidthAdjust = XAXIS_WIDTH_ADJUST_LINE;
+    }else if(graphType===GRAPH_TYPE_COLUMN){
+        xAxisWidthAdjust = XAXIS_WIDTH_ADJUST_COLUMN;
+    }
+
 
     var log = '';
     log += 'ブラウザ幅・高さ:'+dispWidth+','+dispHeight+'\n';
@@ -107,6 +139,84 @@ function onPreInitializeGraph()
     weights = getDummyWeight(now);
     fats = getDummyFat(now);
     calories = getDummyCalorie(now);
+    
+    
+    // seriesの設定
+    series = [];
+    if(graphType===GRAPH_TYPE_LINE){
+        series = [
+            {// 体重
+                yAxis:0,
+                name: '体重',
+                zIndex : 1,
+                color:'#fcb3bf',
+                data: weights
+            },
+            {// 体脂肪
+                yAxis:1,
+                name : '体脂肪',
+                zIndex : 2,
+                color:'#2020a0',
+                data: fats
+            },
+            {// 目標日までの理想線を破線ピンク色で表示
+                yAxis:0,
+                name : '目標線',
+                color : 'pink',
+                dashStyle : 'dot',
+                marker:{ radius:3 },
+                zIndex : 0,
+                data:[84, 50],
+                pointStart      : targetLineBeginDate.getTime(),
+                pointInterval   : targetLineEndDate.getTime() - targetLineBeginDate.getTime()
+            }
+        ];
+        
+        yAxisLabelInfos = [
+            {// 体重
+                axisId : 0,
+                opposite : false,
+                color : YAXIS_WEIGHT_LABEL_COLOR,
+                min   : 0,
+                max   : 0,
+                avg   : 0
+            },
+            {// 体脂肪
+                axisId : 1,
+                opposite : true,
+                color : YAXIS_FAT_LABEL_COLOR,
+                min   : 0,
+                max   : 0,
+                avg   : 0
+            }
+        ];
+        
+        
+    }else if(graphType===GRAPH_TYPE_COLUMN){
+        series = [
+            {// 消費カロリー
+                yAxis:2,
+                name : CALORIE_COLUMN_NAME,
+                color : CALORIE_COLUMN_COLOR,
+                type : 'column',
+                data : calories
+            }     
+        ];
+        
+        yAxisLabelInfos = [
+            {// 消費カロリー
+                axisId : 2,
+                opposite : false,
+                color : YAXIS_CALORIE_LABEL_COLOR,
+                min   : 0,
+                max   : 0,
+                avg   : 0
+            }
+        ];
+        
+    }
+  
+    
 
     endLog('End onPreInitializeGraph');
 }
@@ -202,6 +312,7 @@ function onInitializeGraph()
         // Y軸
         yAxis: [
             {// 体重. 表示してもスクロールすると見えなくなるため、全部非表示
+                id:0,
                 title : { text : null },
                 gridLineWidth : 0,
                 offset : 0,     // 軸の位置
@@ -210,6 +321,7 @@ function onInitializeGraph()
             },
             
             {// 体脂肪. 表示してもスクロールすると見えなくなるため、全部非表示
+                id:1,
                 title : { text : null },
                 opposite : true,
                 gridLineWidth:0,
@@ -218,6 +330,7 @@ function onInitializeGraph()
             },
             
             {// 消費カロリー, 表示してもスクロールすると見えなくなるため、全部非表示
+                id:2,
                 title : { text : null },
                 gridLineWidth:0,
                 labels : { enabled : false } // ラベル非表示
@@ -226,41 +339,7 @@ function onInitializeGraph()
                 
 
     // データをハッシュに変換
-        series: [
-//            {// 体重
-//                yAxis:0,
-//                name: '体重',
-//                zIndex : 1,
-//                color:'#fcb3bf',
-//                data: weights
-//            },
-//            
-//            {// 体脂肪
-//                yAxis:1,
-//                name : '体脂肪',
-//                zIndex : 2,
-//                color:'#2020a0',
-//                data: fats
-//            },
-//            {// 目標日までの理想線を破線ピンク色で表示
-//                yAxis:0,
-//                name : '目標線',
-//                color : 'pink',
-//                dashStyle : 'dot',
-//                marker:{ radius:3 },
-//                zIndex : 0,
-//                data:[84, 50],
-//                pointStart      : targetLineBeginDate.getTime(),
-//                pointInterval   : targetLineEndDate.getTime() - targetLineBeginDate.getTime()
-//            },
-            {// 消費カロリー
-                yAxis:2,
-                name : CALORIE_COLUMN_NAME,
-                color : CALORIE_COLUMN_COLOR,
-                type : 'column',
-                data : calories
-            }            
-        ]
+        series: series
     };
     
 
@@ -295,32 +374,38 @@ function onChartLoad(event){
 
     // ピックラインの描画
     drawPickLine();
-    
-    
-    
-    // 体重用Y軸ラベルの描画
-    
-    var color = YAXIS_WEIGHT_LABEL_COLOR;
-    var minMaxAvg = getMinMaxAvg(weights);
-    drawYAxisLabel(0, minMaxAvg['min'], false, color); // 最小値
-    drawYAxisLabel(0, minMaxAvg['avg'], false, color); // 平均値
-    drawYAxisLabel(0, minMaxAvg['max'], false, color); // 最大値
+
+//    var minMaxAvg = {};
+//    minMaxAvg = getMinMaxAvg(weights);
+//    yAxisLabelInfos[0]['min'] = minMaxAvg['min'];
+//    yAxisLabelInfos[0]['max'] = minMaxAvg['max'];
+//    yAxisLabelInfos[0]['avg'] = minMaxAvg['avg'];
+//        
+//
+//    minMaxAvg = getMinMaxAvg(fats);
+//    yAxisLabelInfos[1]['min'] = minMaxAvg['min'];
+//    yAxisLabelInfos[1]['max'] = minMaxAvg['max'];
+//    yAxisLabelInfos[1]['avg'] = minMaxAvg['avg'];
+     
+    var minMaxAvg = getMinMaxAvg(calories, true);
+    yAxisLabelInfos[0]['min'] = minMaxAvg['min'];
+    yAxisLabelInfos[0]['max'] = minMaxAvg['max'];
+    yAxisLabelInfos[0]['avg'] = minMaxAvg['avg'];
+     
+    // 渡されたY軸用ラベルと破線を描画する
+    for(var i = 0; i < yAxisLabelInfos.length; ++i){
+        var info = yAxisLabelInfos[i];
+        var color = info['color'];
+        var axisId = info['axisId'];
+        drawYAxisLabel(axisId, info['min'], false, color); // 最小値
+        drawYAxisLabel(axisId, info['avg'], false, color); // 平均値
+        drawYAxisLabel(axisId, info['max'], false, color); // 最大値
+    }
+
+
     drawYAxisLabel(0, 50, false,color); // 目標値
     
-    // 体脂肪用Y軸ラベルの描画
-    color = YAXIS_FAT_LABEL_COLOR;
-    minMaxAvg = getMinMaxAvg(fats);
-    drawYAxisLabel(1,minMaxAvg['min'],true, color); // 最小値
-    drawYAxisLabel(1,minMaxAvg['avg'],true, color); // 平均値
-    drawYAxisLabel(1,minMaxAvg['max'],true, color); // 最大値
-
-
-    // 消費カロリー用Y軸ラベルの描画
-    color = YAXIS_CALORIE_LABEL_COLOR;
-    minMaxAvg = getMinMaxAvg(calories,true);
-    drawYAxisLabel(2,minMaxAvg['min'],false, color); // 最小値
-    drawYAxisLabel(2,minMaxAvg['avg'],false, color); // 平均値
-    drawYAxisLabel(2,minMaxAvg['max'],false, color); // 最大値
+    
 
     endLog('End onChartLoad');
 }
@@ -335,7 +420,7 @@ function onMoveScroll()
     // スクロール位置をカーソルとし、ピッカーの位置にある日付を算出します
     var scrollLeft = $(window).scrollLeft();
     var pickPos = (scrollLeft-(CHART_MARGIN_SIDE+COLUMN_MARGIN_SIDE)) + (dispWidth/2) - (PICK_LINE_WIDTH/2);
-    var rate = ONE_DAY / (XAXIS_WIDTH-0.091); // 棒グラフだと原因不明でズレてしまう。
+    var rate = ONE_DAY / (XAXIS_WIDTH + xAxisWidthAdjust);
     var ms = beginDate.getTime() + (pickPos * rate);
     var date = new Date(ms);
 
@@ -361,6 +446,19 @@ function onMoveScroll()
     drawDebugLabel(date.toLocaleString());
     nlog(log);
 }
+
+
+/**
+ * JSONデータを受信.
+ * Android側から呼ばれる.
+ * @param {String} json
+ */
+function nativeReceiveJsonData(json)
+{
+    
+}
+
+
 
 
 
@@ -432,6 +530,11 @@ function getXAxisLabel(value)
     var dayString = function(){
         return (date.getMonth()+1) + '/' + date.getDate();
     }();
+    
+    // 文字列をCSSスタイルをデコレートする
+    var functor = function(color,string,bgcolor){
+        return '<span style="color:'+color+'; background-color:'+bgcolor+';">'+string+'</span>';
+    }   
 
     
 
@@ -439,30 +542,12 @@ function getXAxisLabel(value)
     var result = function(){;
         var bgcolor = "#303020";
         if(date.getDay()===6){ // 土曜日
-            return getStringWithColor(XAXIS_LABEL_SAT_COLOR, dayString, bgcolor);
+            return functor(XAXIS_LABEL_SAT_COLOR, dayString, bgcolor);
         }else if (date.getDay()===0){ // 日曜日
-            return getStringWithColor(XAXIS_LABEL_SUN_COLOR, dayString, bgcolor);
+            return functor(XAXIS_LABEL_SUN_COLOR, dayString, bgcolor);
         }else{
-            return getStringWithColor(XAXIS_LABEL_DEFAULT_COLOR, dayString, bgcolor);
+            return functor(XAXIS_LABEL_DEFAULT_COLOR, dayString, bgcolor);
         }
     }();
     return result;
 }
-
-
-
-/**
- * 文字列を色付きに変換する<br>
- * 参考：<span style="color:#AAAAAA; background-color:#BBBBBB">aaaa</span>
- * @param {String} color
- * @param {String} string
- * @param {String} bgcolor
- * @returns {String}
- */
-function getStringWithColor(color,string,bgcolor){
-    return '<span style="color:'+color+'; background-color:'+bgcolor+';">'+string+'</span>';
-}
-
-
-
-
