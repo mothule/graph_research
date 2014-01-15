@@ -4,6 +4,7 @@
  * メソッド名について<br>
  * プレフィクスに'on'とつくメソッドは全てイベントハンドラになります。<br>
  * プレフィクスに'draw'とつくメソッドは全て表示するためのメソッドになります。<br>
+ * プレフィクスに'native'とつくメソッドは全てAndroid側から呼ばれるメソッドになります。<br>
  *************************************************************/
 
 /******************************
@@ -45,7 +46,6 @@ var GRAPH_TYPE_COLUMN = 1;                          //!< グラフ種類_棒グ�
 var XAXIS_WIDTH_ADJUST_LINE     = 0;                //!< グラフポイント間の調整値_折れ線
 var XAXIS_WIDTH_ADJUST_COLUMN   = -0.091;           //!< グラフポイント間の調整値_棒グラフ
 
-
 /******************************
  * グローバル変数(js内で使用する)
  *****************************/
@@ -67,8 +67,8 @@ var graphType = 0;          //!< グラフの種類（GRAPH_TYPE_***）
 var dateIntervalType = 0;   //!< 0:日 1:週 2:月
 var targetLineBeginDate;    //!< 目標体重ラインの開始日
 var targetLineEndDate;      //!< 目標体重ラインの終了日
+var graphDataType;          //!< グラフのデータの種類. 0:XY 1:XY with Color 
 var graphDatas;             //!< グラフのデータ.
-var graphDataType;          //!< グラフのデータの種類. 0:XY 1:XY with Color
 
 
 
@@ -82,6 +82,11 @@ document.body.onload = onLoaded();
 function onLoaded()
 {
     beginLog('Begin onLoaded');
+    
+    // set test datas.
+    var string = getDummyJsonString();
+    nativeReceiveJsonData(string);
+
     
     onPreInitializeGraph();
 
@@ -138,11 +143,11 @@ function onPreInitializeGraph()
     // テストデータ構築
     weights = getDummyWeight(now);
     fats = getDummyFat(now);
-    calories = getDummyCalorie(now);
+//    calories = getDummyCalorie(now);
     
     
     // seriesの設定
-    series = [];
+    series = new Array;
     if(graphType===GRAPH_TYPE_LINE){
         series = [
             {// 体重
@@ -375,7 +380,7 @@ function onChartLoad(event){
     // ピックラインの描画
     drawPickLine();
 
-//    var minMaxAvg = {};
+//    var minMaxAvg = new Object;
 //    minMaxAvg = getMinMaxAvg(weights);
 //    yAxisLabelInfos[0]['min'] = minMaxAvg['min'];
 //    yAxisLabelInfos[0]['max'] = minMaxAvg['max'];
@@ -393,8 +398,9 @@ function onChartLoad(event){
     yAxisLabelInfos[0]['avg'] = minMaxAvg['avg'];
      
     // 渡されたY軸用ラベルと破線を描画する
-    for(var i = 0; i < yAxisLabelInfos.length; ++i){
-        var info = yAxisLabelInfos[i];
+    var infos = yAxisLabelInfos;
+    for(var i = 0, length = infos.length; i < length; ++i){
+        var info = infos[i];
         var color = info['color'];
         var axisId = info['axisId'];
         drawYAxisLabel(axisId, info['min'], false, color); // 最小値
@@ -455,16 +461,36 @@ function onMoveScroll()
  */
 function nativeReceiveJsonData(json)
 {
+    beginLog('Begin nativeReceiveJsonData');
+    nlog(json);
+    var receiveData = JSON.parse(json);
+    nlog(receiveData);
     
+    // リマップ作業：ジオメトリデータからオブジェクトデータへ変換する
+    receiveData['targetLineBeginDate'] = new Date(receiveData['targetLineBeginDate']);
+    
+    
+    // JS側パラメータへ設定する
+    graphType = receiveData['graphType'];
+    dateIntervalType = receiveData['dateIntervalType'];
+    targetLineBeginDate = receiveData['targetLineBeginDate'];
+    targetLineEndDate = receiveData['targetLineEndDate'];
+    graphDataType = receiveData['graphDataType'];
+    graphDatas = receiveData['graphDatas'];
+
+    calories = graphDatas;
+    
+    
+    endLog('End nativeReceiveJsonData');
 }
 
-
+ 
 
 
 
 function drawDebugLabel(text){
     $('#debug').text(text);
-}
+};
 
 /**
  * 選択している領域を示す線の描画
@@ -475,7 +501,7 @@ function drawPickLine(){
         'height'    : '100%',
         'left'      : (dispWidth / 2) - (PICK_LINE_WIDTH / 2)
     });
-}
+};
 
 /**
  * Y軸のラベルを描画（自力描画）
@@ -514,7 +540,7 @@ function drawYAxisLabel(yAxisId, value, opposite, color)
     cssAttr[opposite ? 'right' : 'left'] = offset;
     var dashLine = $('<div>').css(cssAttr);
     $('#container').after(dashLine);
-}
+};
 
 
 /**

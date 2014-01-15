@@ -5,6 +5,23 @@
  */
 
 
+function getDummyJsonString(){
+    
+    var result = new Object();
+    result['graphType'] = 0;
+    result['dateIntervalType'] = 0;
+    var now = new Date();
+    now = new Date(now.getYear()+1900, now.getMonth(), now.getDate());
+    
+    result['targetLineBeginDate'] = now.getTime();
+    result['targetLineEndDate'] = new Date().setDate(now.getDate() + 1);
+    result['graphDataType'] = 1;
+    result['graphDatas'] = getDummyCalorie(now);
+
+    return JSON.stringify(result);
+}
+
+
 function getDummyWeight(now)
 {
     function getDay(day,now){
@@ -14,7 +31,7 @@ function getDummyWeight(now)
         return d.getTime();
     };
     
-    var data = [];
+    var data = new Array;
     for(var i=0; i<365; ++i){
         var weight = Math.floor(Math.random()*140) + 20;
         data[i] = [ getDay(i,now), weight ];
@@ -31,7 +48,7 @@ function getDummyFat(now)
         return d.getTime();
     };
     
-    var data = [];
+    var data = new Array;
     for(var i=0; i<365; ++i){
         var weight = Math.floor(Math.random()*1000) / 10;
         data[i] = [ getDay(i,now), weight ];
@@ -41,22 +58,22 @@ function getDummyFat(now)
 
 function getDummyCalorie(now)
 {
-    var days = [];
+    var days = new Array;
     var currentDay = new Date(now);
     currentDay.setFullYear( currentDay.getFullYear()-1 );
     for(var i =0; i < 365; ++i){
-        days.push(new Date(currentDay));
+//        days[i] = new Date(currentDay);
+        days[i] = new Date(currentDay).getTime();
         currentDay.setDate( currentDay.getDate() + 1);
     }
 
     var color = 'pink';
-    var data = [];
+    var data = new Array;
     for(var i=0; i<365; i++){
         var weight = Math.floor(Math.random()*90000) / 10;
-        data.push({ color : color, x : days[i], y : weight});
+        data[i] = new Object;
+        data[i] = { color : color, x : days[i], y : weight};
     }
-    
-    
     
     return data;
 }
