@@ -18,10 +18,10 @@ var calories;
  * 定数
  *****************************/
 var ONE_DAY                     = 24 * 3600 * 1000; //!< 1日のミリ秒
-var PICK_LINE_WIDTH             = 4;                //!< ピッカー線の太さ
-var XAXIS_WIDTH                 = 56;               //!< X軸の要素幅(日づけ間の幅）
-var CHART_MARGIN_SIDE           = 30;               //!< チャートの両サイドのマージン
-var COLUMN_MARGIN_SIDE          = 26;               //!< 棒グラフのみ発生するマージンの幅
+var PICK_LINE_WIDTH             = 2;                //!< ピッカー線の太さ;
+var XAXIS_WIDTH                 = 10;               //!< X軸の要素幅(日づけ間の幅）
+var CHART_MARGIN_SIDE           = 0;//30;               //!< チャートの両サイドのマージン
+var COLUMN_MARGIN_SIDE          = 25;               //!< 棒グラフのみ発生するマージンの幅
 var DAY_RANGE                   = 31;              //!< グラフの表示範囲
 var COLUMN_SELECT_COLOR         = 'red';            //!< 棒グラフを選択した時の色
 var XAXIS_ALTERNATE_GRID_COLOR  = '#f0f0ff';        //!< X軸の1つおきのグリッド色
@@ -48,7 +48,7 @@ var GRAPH_TYPE_COLUMN = 1;                          //!< グラフ種類_棒グ�
 // グラフポイント間の距離算出用調整値 列挙
 // 棒グラフだと原因不明でズレてしまうため用意.
 var XAXIS_WIDTH_ADJUST_LINE     = 0;                //!< グラフポイント間の調整値_折れ線
-var XAXIS_WIDTH_ADJUST_COLUMN   = -0.091;           //!< グラフポイント間の調整値_棒グラフ
+var XAXIS_WIDTH_ADJUST_COLUMN   = 0;//-0.081;//-0.091;           //!< グラフポイント間の調整値_棒グラフ
 
 /******************************
  * グローバル変数(js内で使用する)
@@ -157,6 +157,21 @@ function onPreInitializeGraph()
     dispHeight = $(document).height();
     nlog('ブラウザ幅・高さ:'+dispWidth+','+dispHeight);
     
+    
+/*
+var XAXIS_WIDTH                 = 110;//56;               //!< X軸の要素幅(日づけ間の幅）
+var CHART_MARGIN_SIDE           = 30;               //!< チャートの両サイドのマージン
+var COLUMN_MARGIN_SIDE          = 25;               //!< 棒グラフのみ発生するマージンの幅
+var DAY_RANGE                   = 7;              //!< グラフの表示範囲
+ * 
+ */
+
+//var page = 1;
+//    var w = dispWidth - (COLUMN_MARGIN_SIDE*0) ;
+//    XAXIS_WIDTH = (w*page) / DAY_RANGE;
+    
+    
+    
     // データの取得開始日と終了日を取得
     beginDate = new Date( now.getTime() - (DAY_RANGE * ONE_DAY) );
     endDate   = new Date( now.getTime() );
@@ -164,7 +179,7 @@ function onPreInitializeGraph()
     
 
     // コンテンツ幅：棒グラフマージン、チャートマージン、チャート幅
-    contentWidth = COLUMN_MARGIN_SIDE + 2*CHART_MARGIN_SIDE + XAXIS_WIDTH * DAY_RANGE;
+    contentWidth = dispWidth + COLUMN_MARGIN_SIDE + 2*CHART_MARGIN_SIDE + XAXIS_WIDTH * DAY_RANGE;
     $('#container').css('width', contentWidth );
     nlog('コンテンツ幅:'+contentWidth);
     
@@ -464,16 +479,17 @@ function onMoveScroll()
 
     // スクロール位置をカーソルとし、ピッカーの位置にある日付を算出します
     var scrollLeft = $(window).scrollLeft();
-    var pickPos = (scrollLeft-(CHART_MARGIN_SIDE+COLUMN_MARGIN_SIDE)) + (dispWidth/2) - (PICK_LINE_WIDTH/2);
+    var pickPos = (scrollLeft-(CHART_MARGIN_SIDE+COLUMN_MARGIN_SIDE));// + (dispWidth/2) - (PICK_LINE_WIDTH/2);
     var rate = ONE_DAY / (XAXIS_WIDTH + xAxisWidthAdjust);
     var ms = beginDate.getTime() + (pickPos * rate);
     var date = new Date(ms);
 
     // 日付の前後をその日付を選択したことにしたいので、午後は次の日にする。
-    if(date.getHours() > 12){
+    if(date.getHours() >= 12){
         date.setDate(date.getDate()+1);
     }
     log += 'Selected Date : ' + date.toLocaleString() + '\n';
+    drawDebugLabel(date.toLocaleString());
     date = truncateTime(date);
 
     // グラフデータ配列のIndexを算出する
@@ -515,7 +531,6 @@ function onMoveScroll()
     
 
 
-    drawDebugLabel(date.toLocaleString());
     nlog(log);
 }
 
@@ -724,7 +739,8 @@ function getDummyCalorie(now)
 {
     var days = new Array;
     var currentDay = new Date(now);
-    currentDay.setFullYear( currentDay.getFullYear()-1 );
+    currentDay.setDate( currentDay.getDate()-DAY_RANGE);
+//    currentDay.setFullYear( currentDay.getFullYear()-1 );
     for(var i =0; i < DAY_RANGE; ++i){
 //        days[i] = new Date(currentDay);
         days[i] = new Date(currentDay).getTime();
