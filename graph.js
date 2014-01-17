@@ -22,7 +22,7 @@ var PICK_LINE_WIDTH             = 4;                //!< ピッカー線の太�
 var XAXIS_WIDTH                 = 56;               //!< X軸の要素幅(日づけ間の幅）
 var CHART_MARGIN_SIDE           = 30;               //!< チャートの両サイドのマージン
 var COLUMN_MARGIN_SIDE          = 26;               //!< 棒グラフのみ発生するマージンの幅
-var DAY_RANGE                   = 365;              //!< グラフの表示範囲
+var DAY_RANGE                   = 31;              //!< グラフの表示範囲
 var COLUMN_SELECT_COLOR         = 'red';            //!< 棒グラフを選択した時の色
 var XAXIS_ALTERNATE_GRID_COLOR  = '#f0f0ff';        //!< X軸の1つおきのグリッド色
 var XAXIS_GRID_LINE_COLOR       = "#dddddd";        //!< X軸のグリッド色
@@ -36,6 +36,10 @@ var XAXIS_LABEL_DEFAULT_COLOR   = "#A1A5BA";        //!< X軸ラベルのデフ�
 var XAXIS_LABEL_SAT_COLOR       = "#68ACE4";        //!< X軸ラベルの土曜日色
 var XAXIS_LABEL_SUN_COLOR       = "#D9615C";        //!< X軸ラベルの日曜日色
 var YAXIS_LABEL_FONT_SIZE       = 4;                //!< Y軸ラベルのフォントサイズ
+
+// データの種類列挙
+var GRAPH_DATA_TYPE_BODY_COMPOSITION = 0;           //!< グラフデータの種類：体重・体脂肪
+var GRAPH_DATA_TYPE_CALORIE = 1;                    //!< グラフデータの種類：カロリー
 
 // グラフ種類列挙
 var GRAPH_TYPE_LINE = 0;                            //!< グラフ種類_折れ線
@@ -59,42 +63,75 @@ var contentWidth;           //!< コンテナの幅
 var xAxisWidthAdjust;       //!< グラフのポイント間の距離算出用調整値(XAXIS_WIDTH_ADJUST_***)
 var series;
 var yAxisLabelInfos;        //!< Y軸ラベルの情報一覧
+var beforeSelectedDate;		//!< １つ前に選択していた日付
 
 /******************************
  * グローバル変数(Androidから受け取る)
  *****************************/
+var graphDataType = 0;      //!< グラフデータの種類(GRAPH_DATA_TYPE_***)
 var graphType = 0;          //!< グラフの種類（GRAPH_TYPE_***）
 var dateIntervalType = 0;   //!< 0:日 1:週 2:月
 var targetLineBeginDate;    //!< 目標体重ラインの開始日
 var targetLineEndDate;      //!< 目標体重ラインの終了日
-var graphDataType;          //!< グラフのデータの種類. 0:XY 1:XY with Color 
-var graphDatas;             //!< グラフのデータ.
+
+var android;
+
 
 
 
 // エントリー関数
 // ページがロードされた後に、グラフを出力する
-document.body.onload = onLoaded();
-
-/**
- * ページがロードされたら呼ばれます
- */
-function onLoaded()
+$(function()
 {
     beginLog('Begin onLoaded');
-    
-    // set test datas.
-    var string = getDummyJsonString();
-    nativeReceiveJsonData(string);
-
     
     onPreInitializeGraph();
 
     onInitializeGraph();
     
     onPostInitializeGraph();
-
+ 
     endLog('End onLoaded');
+});
+
+/**
+ * ページがロードされたら呼ばれます
+ */
+
+
+/**
+ * Androidからグラフデータを初期化する
+ */
+function initGraphDataFromAndroid()
+{
+    beginLog('Begin initGraphDataFromAndroid');
+    
+    // Androidからデータを受け取り,評価実行する.
+    var data = android.getGraphData();
+    var tmp;
+    eval("tmp = "+data);
+    
+    // データをパラメータに反映させる.
+    setupFromReceiveData(tmp);
+    
+    endLog('End initGraphDataFromAndroid');
+}
+
+/**
+ * JS上でグラフデータを初期化する
+ */
+function initGraphDataFromJs()
+{
+    beginLog('Begin initGraphDataFromJs');
+    
+    var data = getDummyJsonString();
+    var tmp;
+    eval("tmp = "+data);
+    
+    // データをパラメータに反映させる
+    setupFromReceiveData(tmp);
+    
+    endLog('End initGraphDataFromJs');
 }
 
 /**
@@ -104,51 +141,51 @@ function onPreInitializeGraph()
 {
     beginLog('Begin onPreInitializeGraph');
 
+    if(android !== undefined){
+        // Androidから初期化データを取得し、パラメータを初期化
+        initGraphDataFromAndroid();
+    }else{
+        // JS上でパラメータを初期化
+        initGraphDataFromJs();
+    }
+
     // 現在日の取得
     now = truncateTime( new Date() );
 
     // ブラウザの幅・高さを取得
     dispWidth  = $(document).width();
     dispHeight = $(document).height();
+    nlog('ブラウザ幅・高さ:'+dispWidth+','+dispHeight);
     
     // データの取得開始日と終了日を取得
     beginDate = new Date( now.getTime() - (DAY_RANGE * ONE_DAY) );
     endDate   = new Date( now.getTime() );
+    nlog('データ取得の開始と終了日:'+beginDate.toLocaleString()+' : '+endDate.toLocaleString());
     
-    // 目標線の開始時と終了時を取得
-    targetLineBeginDate = truncateTime( new Date(2014, 1-1, 7) );
-    targetLineEndDate = truncateTime( new Date(2014,  2-1, 14) );
 
     // コンテンツ幅：棒グラフマージン、チャートマージン、チャート幅
     contentWidth = COLUMN_MARGIN_SIDE + 2*CHART_MARGIN_SIDE + XAXIS_WIDTH * DAY_RANGE;
     $('#container').css('width', contentWidth );
+    nlog('コンテンツ幅:'+contentWidth);
     
-
-    graphType = GRAPH_TYPE_COLUMN;
     
     // X軸値の間の調整値
     if(graphType===GRAPH_TYPE_LINE){
         xAxisWidthAdjust = XAXIS_WIDTH_ADJUST_LINE;
+        
     }else if(graphType===GRAPH_TYPE_COLUMN){
         xAxisWidthAdjust = XAXIS_WIDTH_ADJUST_COLUMN;
     }
 
-
-    var log = '';
-    log += 'ブラウザ幅・高さ:'+dispWidth+','+dispHeight+'\n';
-    log += 'データ取得の開始と終了日:'+beginDate.toLocaleString()+' : '+endDate.toLocaleString() +'\n';
-    log += 'コンテンツ幅:'+contentWidth+'\n';
-    nlog(log);
     
-    // テストデータ構築
-    weights = getDummyWeight(now);
-    fats = getDummyFat(now);
-//    calories = getDummyCalorie(now);
+    
+    
     
     
     // seriesの設定
     series = new Array;
-    if(graphType===GRAPH_TYPE_LINE){
+    if(graphDataType===GRAPH_DATA_TYPE_BODY_COMPOSITION){
+        
         series = [
             {// 体重
                 yAxis:0,
@@ -197,7 +234,8 @@ function onPreInitializeGraph()
         ];
         
         
-    }else if(graphType===GRAPH_TYPE_COLUMN){
+    }else if(graphDataType===GRAPH_DATA_TYPE_CALORIE){
+
         series = [
             {// 消費カロリー
                 yAxis:2,
@@ -288,6 +326,7 @@ function onInitializeGraph()
         title: { text: null },
         tooltip: { enabled: false },
         scrollbar : { enabled : true },
+        legend : {enabled : false},
 
 
 
@@ -363,7 +402,7 @@ function onPostInitializeGraph()
     beginLog('Begin onPostInitializeGraph');
     
     // スクロールの移動コールバックを設定
-    $(window).scroll(onMoveScroll);
+    $(window).scroll(onMoveScroll); 
     
  //   $(window).scrollLeft(29596); // スクロールを一番右へ移動,値超えても止まる.
     
@@ -440,17 +479,63 @@ function onMoveScroll()
     // グラフデータ配列のIndexを算出する
     var diffTime = date.getTime() - beginDate.getTime();
     var index = diffTime / ONE_DAY;
-    log += '選択しているグラフデータ配列のIndex:'+index+'\n';
+    log += '算出されたグラフデータ配列のIndex:'+index+'\n';
 
     // 指定のグラフを選択状態にする
     var series = chart.series[0];
     var data = series.data[index];
-    if(!data.selected){
-        data.select();
+    
+    var d = new Date(data.category);
+    nlog("選択したグラフデータの日付:"+d.toLocaleDateString());
+    
+    if(data !== null){
+        if(!data.selected){
+            data.select();
+        }
     }
+    
+    // 日付が変わったらAndroidに通知
+    if(android !== undefined)
+    {
+        var beforeTime = null;
+        if(beforeSelectedDate===undefined){// 初回
+            beforeTime = 0;
+        }else{
+            // 日にちが違っていたら変わっていると判断.
+            if(beforeSelectedDate.getDate() !== date.getDate()){ 
+                beforeTime = beforeSelectedDate.getTime();
+            }
+
+            if(beforeTime!==null){
+                android.onChangedSelectedDate(beforeTime, date.getTime());
+                beforeSelectedDate = new Date(date); // 変更されたタイミングのみ保存.
+            }
+        }
+    }
+    
+
 
     drawDebugLabel(date.toLocaleString());
     nlog(log);
+}
+
+function setupFromReceiveData(rcvData)
+{
+    // リマップ作業：ジオメトリデータからオブジェクトデータへ変換する
+    rcvData['targetLineBeginDate'] = new Date(rcvData['targetLineBeginDate']);
+    rcvData['targetLineEndDate'] = new Date(rcvData['targetLineEndDate']);
+    
+    
+    // JS側パラメータへ設定する
+    graphDataType = rcvData['graphDataType'];
+    graphType = rcvData['graphType'];
+    dateIntervalType = rcvData['dateIntervalType'];
+    targetLineBeginDate = rcvData['targetLineBeginDate'];
+    targetLineEndDate = rcvData['targetLineEndDate'];
+    
+    weights = rcvData['weights'];
+    fats = rcvData['fats'];
+    calories = rcvData['calories'];
 }
 
 
@@ -458,28 +543,20 @@ function onMoveScroll()
  * JSONデータを受信.
  * Android側から呼ばれる.
  * @param {String} json
+ * @param {Boolean} doRefresh
  */
-function nativeReceiveJsonData(json)
+function nativeReceiveJsonData(json,doRefresh)
 {
     beginLog('Begin nativeReceiveJsonData');
     nlog(json);
     var receiveData = JSON.parse(json);
     nlog(receiveData);
     
-    // リマップ作業：ジオメトリデータからオブジェクトデータへ変換する
-    receiveData['targetLineBeginDate'] = new Date(receiveData['targetLineBeginDate']);
+    setupFromAndroidData(receiveData);
     
-    
-    // JS側パラメータへ設定する
-    graphType = receiveData['graphType'];
-    dateIntervalType = receiveData['dateIntervalType'];
-    targetLineBeginDate = receiveData['targetLineBeginDate'];
-    targetLineEndDate = receiveData['targetLineEndDate'];
-    graphDataType = receiveData['graphDataType'];
-    graphDatas = receiveData['graphDatas'];
-
-    calories = graphDatas;
-    
+    if(doRefresh){
+        onLoaded();
+    }
     
     endLog('End nativeReceiveJsonData');
 }
@@ -576,4 +653,128 @@ function getXAxisLabel(value)
         }
     }();
     return result;
+}
+
+
+
+
+
+/**
+ * JSONダミー取得
+ * @returns {String} JSON
+ */
+function getDummyJsonString()
+{
+    var result = new Object();
+    result['graphType'] = GRAPH_TYPE_COLUMN;
+    result['dateIntervalType'] = 0;
+    var now = new Date();
+    now = new Date(now.getYear()+1900, now.getMonth(), now.getDate());
+    
+    result['targetLineBeginDate'] = now.getTime();
+    result['targetLineEndDate'] = new Date().setDate(now.getDate() + 1);
+    result['graphDataType'] = GRAPH_DATA_TYPE_CALORIE;
+    result['calories'] = getDummyCalorie(now);
+    result['fats'] = getDummyFat(now);
+    result['weights'] = getDummyWeight(now);
+
+    return JSON.stringify(result);
+}
+
+/**
+ * 体重ダミー取得
+ * @param {type} now
+ * @returns {Array}
+ */
+function getDummyWeight(now)
+{
+    function getDay(day,now){
+        var d = new Date(now);
+        d.setFullYear(d.getFullYear()-1);
+        d.setDate(day);
+        return d.getTime();
+    };
+    
+    var data = new Array;
+    for(var i=0; i<DAY_RANGE; ++i){
+        var weight = Math.floor(Math.random()*140) + 20;
+        data[i] = [ getDay(i,now), weight ];
+    }
+    return data;
+}
+
+function getDummyFat(now)
+{
+    function getDay(day,now){
+        var d = new Date(now);
+        d.setFullYear(d.getFullYear()-1);
+        d.setDate(day);
+        return d.getTime();
+    };
+    
+    var data = new Array;
+    for(var i=0; i<DAY_RANGE; ++i){
+        var weight = Math.floor(Math.random()*1000) / 10;
+        data[i] = [ getDay(i,now), weight ];
+    }
+    return data;
+}
+
+function getDummyCalorie(now)
+{
+    var days = new Array;
+    var currentDay = new Date(now);
+    currentDay.setFullYear( currentDay.getFullYear()-1 );
+    for(var i =0; i < DAY_RANGE; ++i){
+//        days[i] = new Date(currentDay);
+        days[i] = new Date(currentDay).getTime();
+        currentDay.setDate( currentDay.getDate() + 1); //次の日へ
+    }
+
+    var color = 'pink';
+    var data = new Array;
+    for(var i=0; i<DAY_RANGE; i++){
+        var weight = Math.floor(Math.random()*90000) / 10;
+        data[i] = new Object;
+        data[i] = { color : color, x : days[i], y : weight};
+    }
+    
+    return data;
+}
+
+/**
+ * 最小・最大・平均の取得
+ * @param {type} datas
+ * @param {type} isMap
+ * @returns {getMinMaxAvg.Anonym$15}
+ */
+function getMinMaxAvg(datas, isMap)
+{
+    var min = Number.MAX_VALUE;
+    var max = 0;
+    var avg = 0;
+    
+    if(datas){
+        var len = datas.length;
+        for(var i = 0; i < len; ++i){
+            var data;
+            if(isMap){
+                data = datas[i]['y'];
+            }else{
+                data = datas[i][1];
+            }
+
+            min = Math.min(min, data);
+            max = Math.max(max, data);
+            avg += data;
+        }
+        avg = avg / len;
+        avg = avg.toFixed(1);
+    }
+    
+    return {
+        'min' : min,
+        'max' : max,
+        'avg' : avg        
+    };    
 }
