@@ -17,12 +17,12 @@ var calories;
 /******************************
  * 定数
  *****************************/
-var ONE_DAY                     = 24 * 3600 * 1000; //!< 1日のミリ秒
+var ONE_DAY                     = 24 * 60 * 60 * 1000; //!< 1日のミリ秒：変更不可
 var PICK_LINE_WIDTH             = 2;                //!< ピッカー線の太さ;
-var XAXIS_WIDTH                 = 10;               //!< X軸の要素幅(日づけ間の幅）
-var CHART_MARGIN_SIDE           = 0;//30;               //!< チャートの両サイドのマージン
-var COLUMN_MARGIN_SIDE          = 25;               //!< 棒グラフのみ発生するマージンの幅
-var DAY_RANGE                   = 31;              //!< グラフの表示範囲
+var XAXIS_WIDTH                 = 60;               //!< X軸の要素幅(日づけ間の幅）
+var CHART_MARGIN_SIDE           = 30;               //!< チャートの両サイドのマージン
+var COLUMN_MARGIN_SIDE          = 27;               //!< 棒グラフのみ発生するマージンの幅：変更不可
+var DAY_RANGE                   = 365;              //!< グラフの表示範囲
 var COLUMN_SELECT_COLOR         = 'red';            //!< 棒グラフを選択した時の色
 var XAXIS_ALTERNATE_GRID_COLOR  = '#f0f0ff';        //!< X軸の1つおきのグリッド色
 var XAXIS_GRID_LINE_COLOR       = "#dddddd";        //!< X軸のグリッド色
@@ -60,7 +60,6 @@ var dispHeight;             //!< ブラウザの高さ
 var beginDate;              //!< データの取得開始日
 var endDate;                //!< データの取得終了日
 var contentWidth;           //!< コンテナの幅
-var xAxisWidthAdjust;       //!< グラフのポイント間の距離算出用調整値(XAXIS_WIDTH_ADJUST_***)
 var series;
 var yAxisLabelInfos;        //!< Y軸ラベルの情報一覧
 var beforeSelectedDate;		//!< １つ前に選択していた日付
@@ -79,8 +78,11 @@ var android;
 
 
 
-// エントリー関数
-// ページがロードされた後に、グラフを出力する
+/*************************************************************************
+ * エントリー関数
+ * ページがロードされた後に、グラフを出力する
+ * @returns {undefined}
+ ************************************************************************/
 $(function()
 {
     beginLog('Begin onLoaded');
@@ -94,49 +96,11 @@ $(function()
     endLog('End onLoaded');
 });
 
-/**
- * ページがロードされたら呼ばれます
- */
 
-
-/**
- * Androidからグラフデータを初期化する
- */
-function initGraphDataFromAndroid()
-{
-    beginLog('Begin initGraphDataFromAndroid');
-    
-    // Androidからデータを受け取り,評価実行する.
-    var data = android.getGraphData();
-    var tmp;
-    eval("tmp = "+data);
-    
-    // データをパラメータに反映させる.
-    setupFromReceiveData(tmp);
-    
-    endLog('End initGraphDataFromAndroid');
-}
-
-/**
- * JS上でグラフデータを初期化する
- */
-function initGraphDataFromJs()
-{
-    beginLog('Begin initGraphDataFromJs');
-    
-    var data = getDummyJsonString();
-    var tmp;
-    eval("tmp = "+data);
-    
-    // データをパラメータに反映させる
-    setupFromReceiveData(tmp);
-    
-    endLog('End initGraphDataFromJs');
-}
-
-/**
- * グラフの初期化前に呼ばれます
- */
+/************************************************************************
+ * グラフ初期化の直前<br>
+ * Highchartsにパラメータを渡す前に呼ばれます.
+ ***********************************************************************/
 function onPreInitializeGraph()
 {
     beginLog('Begin onPreInitializeGraph');
@@ -149,7 +113,7 @@ function onPreInitializeGraph()
         initGraphDataFromJs();
     }
 
-    // 現在日の取得
+    // 現在日の取得(時・分・秒排除）
     now = truncateTime( new Date() );
 
     // ブラウザの幅・高さを取得
@@ -157,52 +121,26 @@ function onPreInitializeGraph()
     dispHeight = $(document).height();
     nlog('ブラウザ幅・高さ:'+dispWidth+','+dispHeight);
     
-    
-/*
-var XAXIS_WIDTH                 = 110;//56;               //!< X軸の要素幅(日づけ間の幅）
-var CHART_MARGIN_SIDE           = 30;               //!< チャートの両サイドのマージン
-var COLUMN_MARGIN_SIDE          = 25;               //!< 棒グラフのみ発生するマージンの幅
-var DAY_RANGE                   = 7;              //!< グラフの表示範囲
- * 
- */
-
-//var page = 1;
-//    var w = dispWidth - (COLUMN_MARGIN_SIDE*0) ;
-//    XAXIS_WIDTH = (w*page) / DAY_RANGE;
-    
-    
-    
     // データの取得開始日と終了日を取得
     beginDate = new Date( now.getTime() - (DAY_RANGE * ONE_DAY) );
     endDate   = new Date( now.getTime() );
     nlog('データ取得の開始と終了日:'+beginDate.toLocaleString()+' : '+endDate.toLocaleString());
-    
 
-    // コンテンツ幅：棒グラフマージン、チャートマージン、チャート幅
-    contentWidth = dispWidth + COLUMN_MARGIN_SIDE + 2*CHART_MARGIN_SIDE + XAXIS_WIDTH * DAY_RANGE;
+    // グラフを描画するためのコンテンツ幅を設定する
+    // コンテンツ幅は、棒グラフマージン、チャートマージン、チャート幅を考慮している。
+    // コンテンツ領域内でグラフは描画される。
+    // なのでマージンも考慮した大きさにしないと、想定より小さいグラフになる）
+    contentWidth = (XAXIS_WIDTH * DAY_RANGE) + (COLUMN_MARGIN_SIDE*2) + (CHART_MARGIN_SIDE*2);
     $('#container').css('width', contentWidth );
     nlog('コンテンツ幅:'+contentWidth);
-    
-    
-    // X軸値の間の調整値
-    if(graphType===GRAPH_TYPE_LINE){
-        xAxisWidthAdjust = XAXIS_WIDTH_ADJUST_LINE;
-        
-    }else if(graphType===GRAPH_TYPE_COLUMN){
-        xAxisWidthAdjust = XAXIS_WIDTH_ADJUST_COLUMN;
-    }
-
-    
-    
-    
-    
     
     // seriesの設定
     series = new Array;
     if(graphDataType===GRAPH_DATA_TYPE_BODY_COMPOSITION){
         
+        // 体重・体脂肪・目標日までの理想線
         series = [
-            {// 体重
+            {
                 yAxis:0,
                 name: '体重',
                 zIndex : 1,
@@ -250,7 +188,6 @@ var DAY_RANGE                   = 7;              //!< グラフの表示範囲
         
         
     }else if(graphDataType===GRAPH_DATA_TYPE_CALORIE){
-
         series = [
             {// 消費カロリー
                 yAxis:2,
@@ -259,8 +196,7 @@ var DAY_RANGE                   = 7;              //!< グラフの表示範囲
                 type : 'column',
                 data : calories
             }     
-        ];
-        
+        ];        
         yAxisLabelInfos = [
             {// 消費カロリー
                 axisId : 2,
@@ -270,27 +206,84 @@ var DAY_RANGE                   = 7;              //!< グラフの表示範囲
                 max   : 0,
                 avg   : 0
             }
-        ];
-        
+        ];        
     }
-  
-    
 
     endLog('End onPreInitializeGraph');
 }
 
-/**
- * 時間要素の削除.
+/************************************************************************
+ * Androidからグラフデータを初期化.
+ ***********************************************************************/
+function initGraphDataFromAndroid()
+{
+    beginLog('Begin initGraphDataFromAndroid');
+    
+    // Androidからデータを受け取り,評価実行する.
+    var data = android.getGraphData();
+    var tmp;
+    eval("tmp = "+data);
+    
+    // データをパラメータに反映させる.
+    setupFromReceiveData(tmp);
+    
+    endLog('End initGraphDataFromAndroid');
+}
+
+/************************************************************************
+ * JavaScript上でグラフデータを初期化.
+ ***********************************************************************/
+function initGraphDataFromJs()
+{
+    beginLog('Begin initGraphDataFromJs');
+    
+    var data = getDummyJsonString();
+    var tmp; 
+    eval("tmp = "+data); 
+    
+    // データをパラメータに反映させる
+    setupFromReceiveData(tmp);
+    
+    endLog('End initGraphDataFromJs');
+}
+/***********************************************************************
+ * Androidから受け取ったパラメータをセットする
+ * @param {type} rcvData 受け取ったデータ・セット
+ ***********************************************************************/
+function setupFromReceiveData(rcvData)
+{
+    // リマップ作業：ジオメトリデータからオブジェクトデータへ変換する
+    rcvData['targetLineBeginDate'] = new Date(rcvData['targetLineBeginDate']);
+    rcvData['targetLineEndDate'] = new Date(rcvData['targetLineEndDate']);
+    
+    
+    // JS側パラメータへ設定する
+    graphDataType = rcvData['graphDataType'];
+    graphType = rcvData['graphType'];
+    dateIntervalType = rcvData['dateIntervalType'];
+    targetLineBeginDate = rcvData['targetLineBeginDate'];
+    targetLineEndDate = rcvData['targetLineEndDate'];
+    
+    weights = rcvData['weights'];
+    fats = rcvData['fats'];
+    calories = rcvData['calories'];
+}
+
+
+
+/***********************************************************************
+ * 指定Dateの時・分・秒を排除
  * @param {Date} date 削除対象
- * @returns {Date}
- */
+ * @returns {Date} 排除後のDate
+ ***********************************************************************/
 function truncateTime(date){
     return new Date(date.getYear()+1900, date.getMonth(), date.getDate());
 }
 
-/**
- * グラフの初期化
- */
+/***********************************************************************
+ * グラフの初期化<br>
+ * この中でHighchartsにパラメータを渡して初期化する.
+ ***********************************************************************/
 function onInitializeGraph()
 {
     beginLog('Begin onInitializeGraph');
@@ -343,8 +336,6 @@ function onInitializeGraph()
         scrollbar : { enabled : true },
         legend : {enabled : false},
 
-
-
         // X軸
         xAxis: {            
             alternateGridColor: XAXIS_ALTERNATE_GRID_COLOR,  // 1つおきのグリッド色
@@ -354,7 +345,6 @@ function onInitializeGraph()
 
             labels: {
             	overflow: 'justify',
-//                x: XAXIS_WIDTH/2,
                 formatter: function(){ 
                     return getXAxisLabel(this.value); 
                 }
@@ -365,8 +355,6 @@ function onInitializeGraph()
             min: beginDate.getTime(),
             max: endDate.getTime()
         },
-
-
 
         // Y軸
         yAxis: [
@@ -395,9 +383,8 @@ function onInitializeGraph()
                 labels : { enabled : false } // ラベル非表示
             }
         ],
-                
 
-    // データをハッシュに変換
+        // シリーズの設定
         series: series
     };
     
@@ -408,27 +395,13 @@ function onInitializeGraph()
     endLog('End onInitializeGraph');
 }
 
-/**
- * グラフの初期化処理が呼ばれた後に呼ばれます<br>
- * グラフの読み込み処理が完了した場合は、{onChartLoad}になります。
- */
-function onPostInitializeGraph()
-{
-    beginLog('Begin onPostInitializeGraph');
-    
-    // スクロールの移動コールバックを設定
-    $(window).scroll(onMoveScroll); 
-    
- //   $(window).scrollLeft(29596); // スクロールを一番右へ移動,値超えても止まる.
-    
-    endLog('End onPostInitializeGraph');
-}
 
-/**
+/*************************************************************************
  * チャートの読み込みが完了したら呼ばれる
  * @param {} event
- */
-function onChartLoad(event){
+ ************************************************************************/
+function onChartLoad(event)
+{
     beginLog('Begin onChartLoad');
 
     // ピックラインの描画
@@ -470,19 +443,38 @@ function onChartLoad(event){
     endLog('End onChartLoad');
 }
 
-/**
- * スクロールが移動した時に呼ばれる
- */
+/***********************************************************************
+ * グラフ初期化の直後<br>
+ * グラフの読み込み処理が完了した場合は、{onChartLoad}になります。
+ ***********************************************************************/
+function onPostInitializeGraph()
+{
+    beginLog('Begin onPostInitializeGraph');
+    
+    // スクロールの移動コールバックを設定
+    $(window).scroll(onMoveScroll); 
+     
+    $(window).scrollLeft(29596); // スクロールを一番右へ移動,値超えても止まる.
+
+    
+    endLog('End onPostInitializeGraph');
+}
+
+
+/***********************************************************************
+ * スクロールの移動直後
+ ***********************************************************************/
 function onMoveScroll()
 {
     var log = '';
 
     // スクロール位置をカーソルとし、ピッカーの位置にある日付を算出します
-    var scrollLeft = $(window).scrollLeft();
-    var pickPos = (scrollLeft-(CHART_MARGIN_SIDE+COLUMN_MARGIN_SIDE));// + (dispWidth/2) - (PICK_LINE_WIDTH/2);
-    var rate = ONE_DAY / (XAXIS_WIDTH + xAxisWidthAdjust);
+    var scrollLeft = $(window).scrollLeft() - (COLUMN_MARGIN_SIDE + CHART_MARGIN_SIDE);
+//    nlog("Scroll Position : "+scrollLeft);
+    var pickPos = scrollLeft + (dispWidth/2) - (PICK_LINE_WIDTH/2);
+    var rate = ONE_DAY / XAXIS_WIDTH;
     var ms = beginDate.getTime() + (pickPos * rate);
-    var date = new Date(ms);
+    var date = new Date(ms); 
 
     // 日付の前後をその日付を選択したことにしたいので、午後は次の日にする。
     if(date.getHours() >= 12){
@@ -500,16 +492,18 @@ function onMoveScroll()
     // 指定のグラフを選択状態にする
     var series = chart.series[0];
     var data = series.data[index];
-    
-    var d = new Date(data.category);
-    nlog("選択したグラフデータの日付:"+d.toLocaleDateString());
-    
     if(data !== null){
         if(!data.selected){
             data.select();
         }
     }
-    
+
+//    if(data===undefined){
+//        var d = new Date(data.category);
+//        nlog("選択したグラフデータの日付:"+d.toLocaleDateString());
+//    }
+
+    // リスナー通知
     // 日付が変わったらAndroidに通知
     if(android !== undefined)
     {
@@ -528,46 +522,24 @@ function onMoveScroll()
             }
         }
     }
-    
-
 
     nlog(log);
 }
 
-function setupFromReceiveData(rcvData)
-{
-    // リマップ作業：ジオメトリデータからオブジェクトデータへ変換する
-    rcvData['targetLineBeginDate'] = new Date(rcvData['targetLineBeginDate']);
-    rcvData['targetLineEndDate'] = new Date(rcvData['targetLineEndDate']);
-    
-    
-    // JS側パラメータへ設定する
-    graphDataType = rcvData['graphDataType'];
-    graphType = rcvData['graphType'];
-    dateIntervalType = rcvData['dateIntervalType'];
-    targetLineBeginDate = rcvData['targetLineBeginDate'];
-    targetLineEndDate = rcvData['targetLineEndDate'];
-    
-    weights = rcvData['weights'];
-    fats = rcvData['fats'];
-    calories = rcvData['calories'];
-}
-
-
-/**
+/***********************************************************************
  * JSONデータを受信.
  * Android側から呼ばれる.
  * @param {String} json
  * @param {Boolean} doRefresh
- */
+ ***********************************************************************/
 function nativeReceiveJsonData(json,doRefresh)
 {
     beginLog('Begin nativeReceiveJsonData');
     nlog(json);
-    var receiveData = JSON.parse(json);
-    nlog(receiveData);
     
-    setupFromAndroidData(receiveData);
+    // 
+    var receiveData = JSON.parse(json);
+    setupFromReceiveData(receiveData);
     
     if(doRefresh){
         onLoaded();
@@ -576,17 +548,20 @@ function nativeReceiveJsonData(json,doRefresh)
     endLog('End nativeReceiveJsonData');
 }
 
- 
 
 
 
+/***********************************************************************
+ * デバッグラベルにテキスト描画
+ * @param {type} text テキスト
+ **********************************************************************/
 function drawDebugLabel(text){
     $('#debug').text(text);
 };
 
-/**
+/***********************************************************************
  * 選択している領域を示す線の描画
- */
+ **********************************************************************/
 function drawPickLine(){
     $('#centerLine').css({
         'width'     : PICK_LINE_WIDTH,
@@ -595,18 +570,17 @@ function drawPickLine(){
     });
 };
 
-/**
+/***********************************************************************
  * Y軸のラベルを描画（自力描画）
  * @param {Number} yAxisId Y軸のID
  * @param {String} value Y軸の値
  * @param {Boolean} opposite 右側に描画する
  * @param {String} color 色
- */
+ **********************************************************************/
 function drawYAxisLabel(yAxisId, value, opposite, color)
 {
     var chart = $('#container').highcharts();
 
-    
     // テキストの描画
     var cssAttr = {
         'color'     : color,
@@ -635,11 +609,11 @@ function drawYAxisLabel(yAxisId, value, opposite, color)
 };
 
 
-/**
- * X軸のラベルを取得
+/***********************************************************************
+ * X軸の描画用ラベルを取得
  * @param {Number} value milliseconds since Jan 1st 1970 
  * @returns {文字列}
- */
+ **********************************************************************/
 function getXAxisLabel(value)
 {
     var date = new Date(value);
@@ -652,13 +626,11 @@ function getXAxisLabel(value)
     // 文字列をCSSスタイルをデコレートする
     var functor = function(color,string,bgcolor){
         return '<span style="color:'+color+'; background-color:'+bgcolor+';">'+string+'</span>';
-    }   
-
-    
+    };
 
     //土日だけ文字色を変更させる
-    var result = function(){;
-        var bgcolor = "#303020";
+    var result = function(){
+        var bgcolor = "#303020"; // TODO : 背景指定してるが変化せず.
         if(date.getDay()===6){ // 土曜日
             return functor(XAXIS_LABEL_SAT_COLOR, dayString, bgcolor);
         }else if (date.getDay()===0){ // 日曜日
@@ -667,6 +639,7 @@ function getXAxisLabel(value)
             return functor(XAXIS_LABEL_DEFAULT_COLOR, dayString, bgcolor);
         }
     }();
+    
     return result;
 }
 
@@ -674,10 +647,10 @@ function getXAxisLabel(value)
 
 
 
-/**
+/***********************************************************************
  * JSONダミー取得
  * @returns {String} JSON
- */
+ **********************************************************************/
 function getDummyJsonString()
 {
     var result = new Object();
@@ -696,11 +669,11 @@ function getDummyJsonString()
     return JSON.stringify(result);
 }
 
-/**
+/***********************************************************************
  * 体重ダミー取得
  * @param {type} now
  * @returns {Array}
- */
+ ***********************************************************************/
 function getDummyWeight(now)
 {
     function getDay(day,now){
@@ -709,6 +682,7 @@ function getDummyWeight(now)
         d.setDate(day);
         return d.getTime();
     };
+    // 現在〜DAY_RANGEの範囲に値を入れれていない
     
     var data = new Array;
     for(var i=0; i<DAY_RANGE; ++i){
@@ -718,6 +692,11 @@ function getDummyWeight(now)
     return data;
 }
 
+/***********************************************************************
+ * 体脂肪ダミー取得
+ * @param {type} now
+ * @returns {Array}
+ ***********************************************************************/
 function getDummyFat(now)
 {
     function getDay(day,now){
@@ -727,6 +706,8 @@ function getDummyFat(now)
         return d.getTime();
     };
     
+    // 現在〜DAY_RANGEの範囲に値を入れれていない
+    
     var data = new Array;
     for(var i=0; i<DAY_RANGE; ++i){
         var weight = Math.floor(Math.random()*1000) / 10;
@@ -735,13 +716,17 @@ function getDummyFat(now)
     return data;
 }
 
+/***********************************************************************
+ * 消費カロリーダミー取得
+ * @param {type} now
+ * @returns {Array}
+ ***********************************************************************/
 function getDummyCalorie(now)
 {
     var days = new Array;
     var currentDay = new Date(now);
     currentDay.setDate( currentDay.getDate()-DAY_RANGE);
-//    currentDay.setFullYear( currentDay.getFullYear()-1 );
-    for(var i =0; i < DAY_RANGE; ++i){
+    for(var i =0; i < DAY_RANGE+1; ++i){
 //        days[i] = new Date(currentDay);
         days[i] = new Date(currentDay).getTime();
         currentDay.setDate( currentDay.getDate() + 1); //次の日へ
@@ -749,7 +734,7 @@ function getDummyCalorie(now)
 
     var color = 'pink';
     var data = new Array;
-    for(var i=0; i<DAY_RANGE; i++){
+    for(var i=0; i<DAY_RANGE+1; i++){
         var weight = Math.floor(Math.random()*90000) / 10;
         data[i] = new Object;
         data[i] = { color : color, x : days[i], y : weight};
@@ -758,12 +743,12 @@ function getDummyCalorie(now)
     return data;
 }
 
-/**
+/***********************************************************************
  * 最小・最大・平均の取得
  * @param {type} datas
  * @param {type} isMap
  * @returns {getMinMaxAvg.Anonym$15}
- */
+ ***********************************************************************/
 function getMinMaxAvg(datas, isMap)
 {
     var min = Number.MAX_VALUE;
