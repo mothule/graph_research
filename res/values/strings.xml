@@ -2,7 +2,8 @@
 <resources>
 
     <string name="app_name">graph_research</string>
-    <string name="action_settings">Settings</string>
+    <string name="action_menu_next">次へ</string>
     <string name="hello_world">Hello world!</string>
+    <string name="action_menu_before">前へ</string>
 
 </resources>

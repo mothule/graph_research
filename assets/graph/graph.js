@@ -20,7 +20,7 @@ var calories;
 var ONE_DAY                     = 24 * 60 * 60 * 1000; //!< 1日のミリ秒：変更不可
 var PICK_LINE_WIDTH             = 2;                //!< ピッカー線の太さ;
 var XAXIS_WIDTH                 = 60;               //!< X軸の要素幅(日づけ間の幅）
-var CHART_MARGIN_SIDE           = 30;               //!< チャートの両サイドのマージン
+var CHART_MARGIN_SIDE           = 0;//30;               //!< チャートの両サイドのマージン
 var COLUMN_MARGIN_SIDE          = 27;               //!< 棒グラフのみ発生するマージンの幅：変更不可
 var DAY_RANGE                   = 365;              //!< グラフの表示範囲
 var COLUMN_SELECT_COLOR         = 'red';            //!< 棒グラフを選択した時の色
@@ -36,6 +36,8 @@ var XAXIS_LABEL_DEFAULT_COLOR   = "#A1A5BA";        //!< X軸ラベルのデフ�
 var XAXIS_LABEL_SAT_COLOR       = "#68ACE4";        //!< X軸ラベルの土曜日色
 var XAXIS_LABEL_SUN_COLOR       = "#D9615C";        //!< X軸ラベルの日曜日色
 var YAXIS_LABEL_FONT_SIZE       = 4;                //!< Y軸ラベルのフォントサイズ
+
+// グラフの種類に依存するマージン幅の列挙
 
 // データの種類列挙
 var GRAPH_DATA_TYPE_BODY_COMPOSITION = 0;           //!< グラフデータの種類：体重・体脂肪
@@ -63,6 +65,8 @@ var contentWidth;           //!< コンテナの幅
 var series;
 var yAxisLabelInfos;        //!< Y軸ラベルの情報一覧
 var beforeSelectedDate;		//!< １つ前に選択していた日付
+var graphTypeDependMargin = 0;  //!< グラフタイプ依存のマージン値
+
 
 /******************************
  * グローバル変数(Androidから受け取る)
@@ -130,7 +134,10 @@ function onPreInitializeGraph()
     // コンテンツ幅は、棒グラフマージン、チャートマージン、チャート幅を考慮している。
     // コンテンツ領域内でグラフは描画される。
     // なのでマージンも考慮した大きさにしないと、想定より小さいグラフになる）
-    contentWidth = (XAXIS_WIDTH * DAY_RANGE) + (COLUMN_MARGIN_SIDE*2) + (CHART_MARGIN_SIDE*2);
+    if(graphDataType===GRAPH_DATA_TYPE_CALORIE){
+        graphTypeDependMargin = COLUMN_MARGIN_SIDE;
+    }
+    contentWidth = (XAXIS_WIDTH * DAY_RANGE) + (graphTypeDependMargin*2) + (CHART_MARGIN_SIDE*2);
     $('#container').css('width', contentWidth );
     nlog('コンテンツ幅:'+contentWidth);
     
@@ -390,7 +397,8 @@ function onInitializeGraph()
     
 
     // グラフを作成
-    chart = new Highcharts.Chart(options);    
+    chart = new Highcharts.Chart(options);
+    
 
     endLog('End onInitializeGraph');
 }
@@ -458,7 +466,7 @@ function onPostInitializeGraph()
 
     
     endLog('End onPostInitializeGraph');
-}
+} 
 
 
 /***********************************************************************
@@ -468,9 +476,8 @@ function onMoveScroll()
 {
     var log = '';
 
-    // スクロール位置をカーソルとし、ピッカーの位置にある日付を算出します
-    var scrollLeft = $(window).scrollLeft() - (COLUMN_MARGIN_SIDE + CHART_MARGIN_SIDE);
-//    nlog("Scroll Position : "+scrollLeft);
+    // スクロール位置からピッカーの位置を割り出して、選択している日付を算出する。
+    var scrollLeft = $(window).scrollLeft() - (graphTypeDependMargin + CHART_MARGIN_SIDE);
     var pickPos = scrollLeft + (dispWidth/2) - (PICK_LINE_WIDTH/2);
     var rate = ONE_DAY / XAXIS_WIDTH;
     var ms = beginDate.getTime() + (pickPos * rate);
@@ -482,19 +489,22 @@ function onMoveScroll()
     }
     log += 'Selected Date : ' + date.toLocaleString() + '\n';
     drawDebugLabel(date.toLocaleString());
-    date = truncateTime(date);
 
     // グラフデータ配列のIndexを算出する
+    date = truncateTime(date);
     var diffTime = date.getTime() - beginDate.getTime();
     var index = diffTime / ONE_DAY;
     log += '算出されたグラフデータ配列のIndex:'+index+'\n';
 
     // 指定のグラフを選択状態にする
-    var series = chart.series[0];
-    var data = series.data[index];
-    if(data !== null){
-        if(!data.selected){
-            data.select();
+//    for(var i=0, len=chart.series.length; i<len; ++i)
+    {
+        var series = chart.series[0];
+        var data = series.data[index];
+        if(data !== null && data !== undefined){
+            if(!data.selected){
+                data.select();
+            }
         }
     }
 
@@ -654,17 +664,16 @@ function getXAxisLabel(value)
 function getDummyJsonString()
 {
     var result = new Object();
-    result['graphType'] = GRAPH_TYPE_COLUMN;
-    result['dateIntervalType'] = 0;
-    var now = new Date();
-    now = new Date(now.getYear()+1900, now.getMonth(), now.getDate());
+    result['graphType']             = GRAPH_TYPE_COLUMN;
+    result['dateIntervalType']      = 0;
+    var now = truncateTime(new Date());
     
-    result['targetLineBeginDate'] = now.getTime();
-    result['targetLineEndDate'] = new Date().setDate(now.getDate() + 1);
-    result['graphDataType'] = GRAPH_DATA_TYPE_CALORIE;
-    result['calories'] = getDummyCalorie(now);
-    result['fats'] = getDummyFat(now);
-    result['weights'] = getDummyWeight(now);
+    result['targetLineBeginDate']   = now.getTime();
+    result['targetLineEndDate']     = new Date().setDate(now.getDate() + 1);
+    result['graphDataType']         = GRAPH_DATA_TYPE_BODY_COMPOSITION;//GRAPH_DATA_TYPE_CALORIE;
+    result['calories']              = getDummyCalorie(now);
+    result['fats']                  = getDummyFat(now);
+    result['weights']               = getDummyWeight(now);
 
     return JSON.stringify(result);
 }
@@ -676,18 +685,15 @@ function getDummyJsonString()
  ***********************************************************************/
 function getDummyWeight(now)
 {
-    function getDay(day,now){
-        var d = new Date(now);
-        d.setFullYear(d.getFullYear()-1);
-        d.setDate(day);
-        return d.getTime();
-    };
-    // 現在〜DAY_RANGEの範囲に値を入れれていない
+    var currentDate = new Date(now);
+    currentDate.setDate( currentDate.getDate() - DAY_RANGE);
+    
     
     var data = new Array;
-    for(var i=0; i<DAY_RANGE; ++i){
-        var weight = Math.floor(Math.random()*140) + 20;
-        data[i] = [ getDay(i,now), weight ];
+    for(var i=0; i<DAY_RANGE+1; ++i){
+        var val = Math.floor(Math.random()*140) + 20;
+        data[i] = [ currentDate.getTime(), val ];
+        currentDate.setDate(currentDate.getDate()+1);
     }
     return data;
 }
@@ -699,19 +705,15 @@ function getDummyWeight(now)
  ***********************************************************************/
 function getDummyFat(now)
 {
-    function getDay(day,now){
-        var d = new Date(now);
-        d.setFullYear(d.getFullYear()-1);
-        d.setDate(day);
-        return d.getTime();
-    };
+    var currentDate = new Date(now);
+    currentDate.setDate( currentDate.getDate() - DAY_RANGE);
     
-    // 現在〜DAY_RANGEの範囲に値を入れれていない
     
     var data = new Array;
-    for(var i=0; i<DAY_RANGE; ++i){
-        var weight = Math.floor(Math.random()*1000) / 10;
-        data[i] = [ getDay(i,now), weight ];
+    for(var i=0; i<DAY_RANGE+1; ++i){
+        var val = Math.floor(Math.random()*1000) / 10;
+        data[i] = [ currentDate.getTime(), val ];
+        currentDate.setDate(currentDate.getDate()+1);
     }
     return data;
 }
@@ -727,7 +729,6 @@ function getDummyCalorie(now)
     var currentDay = new Date(now);
     currentDay.setDate( currentDay.getDate()-DAY_RANGE);
     for(var i =0; i < DAY_RANGE+1; ++i){
-//        days[i] = new Date(currentDay);
         days[i] = new Date(currentDay).getTime();
         currentDay.setDate( currentDay.getDate() + 1); //次の日へ
     }
