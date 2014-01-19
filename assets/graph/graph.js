@@ -20,9 +20,9 @@ var calories;
 var ONE_DAY                     = 24 * 60 * 60 * 1000; //!< 1日のミリ秒：変更不可
 var PICK_LINE_WIDTH             = 2;                //!< ピッカー線の太さ;
 var XAXIS_WIDTH                 = 60;               //!< X軸の要素幅(日づけ間の幅）
-var CHART_MARGIN_SIDE           = 0;//30;               //!< チャートの両サイドのマージン
+var CHART_MARGIN_SIDE           = 30;               //!< チャートの両サイドのマージン
 var COLUMN_MARGIN_SIDE          = 27;               //!< 棒グラフのみ発生するマージンの幅：変更不可
-var DAY_RANGE                   = 365;              //!< グラフの表示範囲
+var DAY_RANGE                   = 31;              //!< グラフの表示範囲
 var COLUMN_SELECT_COLOR         = 'red';            //!< 棒グラフを選択した時の色
 var XAXIS_ALTERNATE_GRID_COLOR  = '#f0f0ff';        //!< X軸の1つおきのグリッド色
 var XAXIS_GRID_LINE_COLOR       = "#dddddd";        //!< X軸のグリッド色
@@ -79,8 +79,31 @@ var targetLineEndDate;      //!< 目標体重ラインの終了日
 
 var android;
 
+var test=false;
 
 
+
+TODO
+Android側から単位の切り替え、データの切り替えを行うこと。
+グラフの単位を時で動けるようにすること。
+グラフの単位を日から時に変えれるようにすること
+
+
+/***************************************************************************
+ * グラフタイプを変更する
+ **************************************************************************/
+function onClickChangeType()
+{
+    graphDataType = GRAPH_DATA_TYPE_CALORIE;
+    
+    test = !test;
+    
+    onPreInitializeGraph();
+
+    onInitializeGraph();
+    
+    onPostInitializeGraph();
+}
 
 /*************************************************************************
  * エントリー関数
@@ -91,6 +114,8 @@ $(function()
 {
     beginLog('Begin onLoaded');
     
+    onInitializeEnv();
+    
     onPreInitializeGraph();
 
     onInitializeGraph();
@@ -99,6 +124,23 @@ $(function()
  
     endLog('End onLoaded');
 });
+
+/**
+ * 環境パラメタ類の初期化
+ */
+function onInitializeEnv()
+{
+    // 現在日の取得(時・分・秒排除）
+    now = truncateTime( new Date() );
+
+    // ブラウザの幅・高さを取得
+    // ブラウザは一度グラフを描画した後に、再度取得すると何故か幅が広くなっている。
+    // 結果位置がずれる.
+    // なので、取得を一度っきりにしている。
+    dispWidth  = $(document).width();
+    dispHeight = $(document).height();
+    nlog('ブラウザ幅・高さ:'+dispWidth+','+dispHeight);
+}
 
 
 /************************************************************************
@@ -116,14 +158,8 @@ function onPreInitializeGraph()
         // JS上でパラメータを初期化
         initGraphDataFromJs();
     }
+    
 
-    // 現在日の取得(時・分・秒排除）
-    now = truncateTime( new Date() );
-
-    // ブラウザの幅・高さを取得
-    dispWidth  = $(document).width();
-    dispHeight = $(document).height();
-    nlog('ブラウザ幅・高さ:'+dispWidth+','+dispHeight);
     
     // データの取得開始日と終了日を取得
     beginDate = new Date( now.getTime() - (DAY_RANGE * ONE_DAY) );
@@ -271,6 +307,7 @@ function setupFromReceiveData(rcvData)
     targetLineBeginDate = rcvData['targetLineBeginDate'];
     targetLineEndDate = rcvData['targetLineEndDate'];
     
+   
     weights = rcvData['weights'];
     fats = rcvData['fats'];
     calories = rcvData['calories'];
@@ -665,12 +702,14 @@ function getDummyJsonString()
 {
     var result = new Object();
     result['graphType']             = GRAPH_TYPE_COLUMN;
-    result['dateIntervalType']      = 0;
+    result['dateIntervalType']      = 1;
+
+    
     var now = truncateTime(new Date());
     
     result['targetLineBeginDate']   = now.getTime();
     result['targetLineEndDate']     = new Date().setDate(now.getDate() + 1);
-    result['graphDataType']         = GRAPH_DATA_TYPE_BODY_COMPOSITION;//GRAPH_DATA_TYPE_CALORIE;
+    result['graphDataType']         = !test?GRAPH_DATA_TYPE_BODY_COMPOSITION : GRAPH_DATA_TYPE_CALORIE;
     result['calories']              = getDummyCalorie(now);
     result['fats']                  = getDummyFat(now);
     result['weights']               = getDummyWeight(now);
