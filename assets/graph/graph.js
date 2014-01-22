@@ -13,6 +13,8 @@
 var weights;
 var fats;
 var calories;
+var graphDataCache = new Object;    
+
 
 /******************************
  * 定数
@@ -20,7 +22,7 @@ var calories;
 var ONE_DAY                     = 24 * 60 * 60 * 1000; //!< 1日のミリ秒：変更不可
 var PICK_LINE_WIDTH             = 2;                //!< ピッカー線の太さ;
 var XAXIS_WIDTH                 = 60;               //!< X軸の要素幅(日づけ間の幅）
-var CHART_MARGIN_SIDE           = 30;               //!< チャートの両サイドのマージン
+var CHART_MARGIN_SIDE           = 0;//30;               //!< チャートの両サイドのマージン
 var COLUMN_MARGIN_SIDE          = 27;               //!< 棒グラフのみ発生するマージンの幅：変更不可
 var DAY_RANGE                   = 31;              //!< グラフの表示範囲
 var COLUMN_SELECT_COLOR         = 'red';            //!< 棒グラフを選択した時の色
@@ -36,8 +38,12 @@ var XAXIS_LABEL_DEFAULT_COLOR   = "#A1A5BA";        //!< X軸ラベルのデフ�
 var XAXIS_LABEL_SAT_COLOR       = "#68ACE4";        //!< X軸ラベルの土曜日色
 var XAXIS_LABEL_SUN_COLOR       = "#D9615C";        //!< X軸ラベルの日曜日色
 var YAXIS_LABEL_FONT_SIZE       = 4;                //!< Y軸ラベルのフォントサイズ
+var PREFETCH_LENGTH 			= 8;				//!< 現在時刻を選択できるように近い未来日まで読む必要があったので用意
 
-// グラフの種類に依存するマージン幅の列挙
+
+// 時間の単位列挙
+var DATE_UNIT_HOUR = 0;
+var DATE_UNIT_DAY = 1;
 
 // データの種類列挙
 var GRAPH_DATA_TYPE_BODY_COMPOSITION = 0;           //!< グラフデータの種類：体重・体脂肪
@@ -66,6 +72,7 @@ var series;
 var yAxisLabelInfos;        //!< Y軸ラベルの情報一覧
 var beforeSelectedDate;		//!< １つ前に選択していた日付
 var graphTypeDependMargin = 0;  //!< グラフタイプ依存のマージン値
+var beforeSelectedGraphData; //!< 前回選択してたグラフデータ:空を選択した場合に選択状態が残るため。
 
 
 /******************************
@@ -73,20 +80,29 @@ var graphTypeDependMargin = 0;  //!< グラフタイプ依存のマージン値
  *****************************/
 var graphDataType = 0;      //!< グラフデータの種類(GRAPH_DATA_TYPE_***)
 var graphType = 0;          //!< グラフの種類（GRAPH_TYPE_***）
-var dateIntervalType = 0;   //!< 0:日 1:週 2:月
+var dateUnit = 0;           //!< 時間の単位（DATE_UNIT_***)
 var targetLineBeginDate;    //!< 目標体重ラインの開始日
 var targetLineEndDate;      //!< 目標体重ラインの終了日
 
 var android;
 
+/******************************
+ * デバッグ
+ *****************************/
+var useDummyData = false;
 var test=false;
 
+if(android===undefined){
+    useDummyData = true;
+}
 
 
-TODO
-Android側から単位の切り替え、データの切り替えを行うこと。
-グラフの単位を時で動けるようにすること。
-グラフの単位を日から時に変えれるようにすること
+
+
+//TODO
+//Android側から単位の切り替え、データの切り替えを行うこと。
+//グラフの単位を時で動けるようにすること。
+//グラフの単位を日から時に変えれるようにすること
 
 
 /***************************************************************************
@@ -130,9 +146,6 @@ $(function()
  */
 function onInitializeEnv()
 {
-    // 現在日の取得(時・分・秒排除）
-    now = truncateTime( new Date() );
-
     // ブラウザの幅・高さを取得
     // ブラウザは一度グラフを描画した後に、再度取得すると何故か幅が広くなっている。
     // 結果位置がずれる.
@@ -149,22 +162,31 @@ function onInitializeEnv()
  ***********************************************************************/
 function onPreInitializeGraph()
 {
-    beginLog('Begin onPreInitializeGraph');
+	console.group('onPreInitializeGraph');
 
-    if(android !== undefined){
-        // Androidから初期化データを取得し、パラメータを初期化
-        initGraphDataFromAndroid();
-    }else{
+	beginLog('Begin onPreInitializeGraph');
+
+    if(useDummyData){ 
         // JS上でパラメータを初期化
         initGraphDataFromJs();
+    }else{
+        // Androidから初期化データを取得し、パラメータを初期化
+        initGraphDataFromAndroid();
     }
+
+    // 現在日の取得(時・分・秒排除）
+    now = truncateTime( new Date(), dateUnit);
     
 
-    
     // データの取得開始日と終了日を取得
-    beginDate = new Date( now.getTime() - (DAY_RANGE * ONE_DAY) );
-    endDate   = new Date( now.getTime() );
+    beginDate = new Date( now.getTime() - ((DAY_RANGE-PREFETCH_LENGTH) * ONE_DAY) );
+    endDate   = new Date( now.getTime() + (PREFETCH_LENGTH * ONE_DAY) );
     nlog('データ取得の開始と終了日:'+beginDate.toLocaleString()+' : '+endDate.toLocaleString());
+
+    var diff = endDate.getDate() - beginDate.getDate();
+    nlog('範囲:'+diff);
+    
+    
 
     // グラフを描画するためのコンテンツ幅を設定する
     // コンテンツ幅は、棒グラフマージン、チャートマージン、チャート幅を考慮している。
@@ -253,6 +275,7 @@ function onPreInitializeGraph()
     }
 
     endLog('End onPreInitializeGraph');
+    console.groupEnd();
 }
 
 /************************************************************************
@@ -266,9 +289,12 @@ function initGraphDataFromAndroid()
     var data = android.getGraphData();
     var tmp;
     eval("tmp = "+data);
-    
+
     // データをパラメータに反映させる.
     setupFromReceiveData(tmp);
+    
+    // 固定パラメタの修正
+    configureConstantParameter(dateUnit);
     
     endLog('End initGraphDataFromAndroid');
 }
@@ -282,7 +308,8 @@ function initGraphDataFromJs()
     
     var data = getDummyJsonString();
     var tmp; 
-    eval("tmp = "+data); 
+    eval("tmp="+data); 
+    nlog("Generated Json Dummy Datas = "+data); 
     
     // データをパラメータに反映させる
     setupFromReceiveData(tmp);
@@ -303,7 +330,7 @@ function setupFromReceiveData(rcvData)
     // JS側パラメータへ設定する
     graphDataType = rcvData['graphDataType'];
     graphType = rcvData['graphType'];
-    dateIntervalType = rcvData['dateIntervalType'];
+    dateUnit = rcvData['dateUnit'];
     targetLineBeginDate = rcvData['targetLineBeginDate'];
     targetLineEndDate = rcvData['targetLineEndDate'];
     
@@ -318,10 +345,15 @@ function setupFromReceiveData(rcvData)
 /***********************************************************************
  * 指定Dateの時・分・秒を排除
  * @param {Date} date 削除対象
+ * @param {Integer} dateUnit 日付の単位
  * @returns {Date} 排除後のDate
  ***********************************************************************/
-function truncateTime(date){
-    return new Date(date.getYear()+1900, date.getMonth(), date.getDate());
+function truncateTime(date, dateUnit){
+    if(dateUnit===DATE_UNIT_DAY){
+        return new Date(date.getYear()+1900, date.getMonth(), date.getDate());
+    }else if(dateUnit===DATE_UNIT_HOUR){
+        return new Date(date.getYear()+1900, date.getMonth(), date.getDate(), date.getHours());
+    }
 }
 
 /***********************************************************************
@@ -390,7 +422,7 @@ function onInitializeGraph()
             labels: {
             	overflow: 'justify',
                 formatter: function(){ 
-                    return getXAxisLabel(this.value); 
+                    return getXAxisLabel(this.value, dateUnit); 
                 }
             },
             
@@ -448,6 +480,22 @@ function onInitializeGraph()
 function onChartLoad(event)
 {
     beginLog('Begin onChartLoad');
+    
+
+    // キャッシュ作成
+    var chart = $('#container').highcharts();
+    var cache = graphDataCache;
+    var series = chart.series[0];
+    var datas = new Array; datas = series.data;
+    for(var i=0,len=datas.length; i < len; ++i){
+    	var data = datas[i];
+    	if(data !== undefined){
+    	    cache[data.category] = data;
+    	}
+   	}
+    nlog('cache:');
+   	console.dir(cache);
+
 
     // ピックラインの描画
     drawPickLine();
@@ -517,53 +565,77 @@ function onMoveScroll()
     var scrollLeft = $(window).scrollLeft() - (graphTypeDependMargin + CHART_MARGIN_SIDE);
     var pickPos = scrollLeft + (dispWidth/2) - (PICK_LINE_WIDTH/2);
     var rate = ONE_DAY / XAXIS_WIDTH;
-    var ms = beginDate.getTime() + (pickPos * rate);
+    var ms = (beginDate.getTime()) + (pickPos * rate);
     var date = new Date(ms); 
 
-    // 日付の前後をその日付を選択したことにしたいので、午後は次の日にする。
-    if(date.getHours() >= 12){
-        date.setDate(date.getDate()+1);
+    // グラフ値の日付の前後をその日付を選択したことにしたいので、範囲内に入ればずらす.
+    if(dateUnit===DATE_UNIT_DAY){
+        if(date.getHours() >= 12){
+            date.setDate(date.getDate()+1);
+        }
+    }else if(dateUnit===DATE_UNIT_HOUR){
+        if(date.getMinutes() >= 30){
+            date.setHours(date.getHours() + 1);
+        }
+    }else{
+    	console.error('日付単位dateUnitが不正値:'+dateUnit);
     }
-    log += 'Selected Date : ' + date.toLocaleString() + '\n';
+    
     drawDebugLabel(date.toLocaleString());
 
-    // グラフデータ配列のIndexを算出する
-    date = truncateTime(date);
-    var diffTime = date.getTime() - beginDate.getTime();
-    var index = diffTime / ONE_DAY;
-    log += '算出されたグラフデータ配列のIndex:'+index+'\n';
 
-    // 指定のグラフを選択状態にする
-//    for(var i=0, len=chart.series.length; i<len; ++i)
-    {
-        var series = chart.series[0];
-        var data = series.data[index];
+    // グラフデータ配列のIndexを算出する
+    date = truncateTime(date, dateUnit);
+//    var diffTime = date.getTime() - (beginDate.getTime()-(PREFETCH_LENGTH*ONE_DAY));
+//    var index = (diffTime / ONE_DAY) - 1; // -1 => 計算で参照位置がずれるため.詳細は未調査. 
+
+    log += ' カーソルが選んでいる現在日付(補正済み):'+date.toString();
+//    log += ' DiffTime:'+diffTime;
+//    log += ' 算出されたグラフデータ配列のIndex:'+index;
+
+    {// キャッシュからグラフデータを取得し,選択状態を更新する
+    	var cacheKey = date.getTime();
+    	var data = graphDataCache[cacheKey];
         if(data !== null && data !== undefined){
             if(!data.selected){
                 data.select();
+                beforeSelectedGraphData = data;
             }
-        }
+        }else{
+        	if(beforeSelectedGraphData !== undefined){
+        		if(beforeSelectedGraphData.selected){
+        			beforeSelectedGraphData.select();
+        		}
+    		}
+    	}
     }
 
-//    if(data===undefined){
-//        var d = new Date(data.category);
-//        nlog("選択したグラフデータの日付:"+d.toLocaleDateString());
-//    }
 
     // リスナー通知
     // 日付が変わったらAndroidに通知
     if(android !== undefined)
     {
-        var beforeTime = null;
+    	var beforeTime = null, newTime = date.getTime();
         if(beforeSelectedDate===undefined){// 初回
-            beforeTime = 0;
-        }else{
-            // 日にちが違っていたら変わっていると判断.
-            if(beforeSelectedDate.getDate() !== date.getDate()){ 
-                beforeTime = beforeSelectedDate.getTime();
-            }
+            beforeSelectedDate = new Date(date);
+            beforeTime = beforeSelectedDate.getTime();
+        }
+        
+        {
+        	// 時間が変化をチェック
+        	var isChangedDate = false;
+        	if(dateUnit===DATE_UNIT_DAY){
+        		isChangedDate = beforeSelectedDate.getDate() !== date.getDate();
+        	}else if(dateUnit===DATE_UNIT_HOUR){
+        		isChangedDate = beforeSelectedDate.getHours() !== date.getHours();
+       		}
+        	
+       		// 変化してたら前回選択日付を設定
+        	if(isChangedDate){
+        		beforeTime = beforeSelectedDate.getTime();
+       		}
 
-            if(beforeTime!==null){
+            if(beforeTime !== null){
                 android.onChangedSelectedDate(beforeTime, date.getTime());
                 beforeSelectedDate = new Date(date); // 変更されたタイミングのみ保存.
             }
@@ -659,15 +731,34 @@ function drawYAxisLabel(yAxisId, value, opposite, color)
 /***********************************************************************
  * X軸の描画用ラベルを取得
  * @param {Number} value milliseconds since Jan 1st 1970 
+ * @param {Integer} dateUnit 日付の単位
  * @returns {文字列}
  **********************************************************************/
-function getXAxisLabel(value)
+function getXAxisLabel(value, dateUnit)
 {
     var date = new Date(value);
     
-    // 日にちを算出
-    var dayString = function(){
-        return (date.getMonth()+1) + '/' + date.getDate();
+    // Date文字列を算出
+    var dateString = function(){
+        // 日毎の場合
+        if(dateUnit===DATE_UNIT_DAY){
+            return (date.getMonth()+1) + '/' + date.getDate();
+        }
+
+        // 時毎の場合
+        var hour = date.getHours();
+        if(hour===0){
+            // 0時であれば日付にする
+            return (date.getMonth()+1) + '/' + date.getDate();
+            
+        }else if(hour%3!==0){
+            // 0時以外は3回に１回非表示
+            return '';
+            
+        }else{
+            // それ以外は通常通り表示
+            return hour + ":00";
+        }
     }();
     
     // 文字列をCSSスタイルをデコレートする
@@ -679,12 +770,13 @@ function getXAxisLabel(value)
     var result = function(){
         var bgcolor = "#303020"; // TODO : 背景指定してるが変化せず.
         if(date.getDay()===6){ // 土曜日
-            return functor(XAXIS_LABEL_SAT_COLOR, dayString, bgcolor);
+            return functor(XAXIS_LABEL_SAT_COLOR, dateString, bgcolor);
         }else if (date.getDay()===0){ // 日曜日
-            return functor(XAXIS_LABEL_SUN_COLOR, dayString, bgcolor);
+            return functor(XAXIS_LABEL_SUN_COLOR, dateString, bgcolor);
         }else{
-            return functor(XAXIS_LABEL_DEFAULT_COLOR, dayString, bgcolor);
+            return functor(XAXIS_LABEL_DEFAULT_COLOR, dateString, bgcolor);
         }
+        return functor(XAXIS_LABEL_DEFAULT_COLOR, dateString, bgcolor);
     }();
     
     return result;
@@ -701,75 +793,97 @@ function getXAxisLabel(value)
 function getDummyJsonString()
 {
     var result = new Object();
-    result['graphType']             = GRAPH_TYPE_COLUMN;
-    result['dateIntervalType']      = 1;
-
+//    result['graphType']             = GRAPH_TYPE_COLUMN;
+    result['dateUnit']  = DATE_UNIT_HOUR;
     
-    var now = truncateTime(new Date());
+    dateUnit = result['dateUnit'];
+    configureConstantParameter(dateUnit);
     
+    now = truncateTime(new Date(), dateUnit);
     result['targetLineBeginDate']   = now.getTime();
     result['targetLineEndDate']     = new Date().setDate(now.getDate() + 1);
-    result['graphDataType']         = !test?GRAPH_DATA_TYPE_BODY_COMPOSITION : GRAPH_DATA_TYPE_CALORIE;
-    result['calories']              = getDummyCalorie(now);
-    result['fats']                  = getDummyFat(now);
-    result['weights']               = getDummyWeight(now);
+    result['graphDataType']         = GRAPH_DATA_TYPE_CALORIE; //GRAPH_DATA_TYPE_BODY_COMPOSITION;
+    
+    
+    result['calories']              = getDummyCalorie(now, dateUnit);
+    result['fats']                  = getDummyBodyComposition(now, dateUnit, false);
+    result['weights']               = getDummyBodyComposition(now, dateUnit, true);
 
     return JSON.stringify(result);
 }
 
-/***********************************************************************
- * 体重ダミー取得
+/***************************************************************************
+ * 固定パラメータの設定
+ * 日付のタイプから固定パラメータを修正する.
+ **************************************************************************/
+function configureConstantParameter(dateUnit)
+{
+    if(dateUnit===DATE_UNIT_HOUR){
+        DAY_RANGE = 24*3;
+        ONE_DAY = 1 * 60 * 60 * 1000; // 1Hour
+        XAXIS_WIDTH = 25;
+        COLUMN_MARGIN_SIDE = 11;         
+        
+    }
+}
+
+
+
+/*************************************************************************
+ * 体重or体脂肪のダミーデータ取得
  * @param {type} now
+ * @param {Integer} dateUnit    日付の単位
+ * @param {Boolean} isWeight 体重データを取得するか？
  * @returns {Array}
- ***********************************************************************/
-function getDummyWeight(now)
+ ************************************************************************/
+function getDummyBodyComposition(now, dateUnit, isWeight)
 {
     var currentDate = new Date(now);
-    currentDate.setDate( currentDate.getDate() - DAY_RANGE);
-    
+    if(dateUnit===DATE_UNIT_HOUR){
+        currentDate.setHours( currentDate.getHours() - DAY_RANGE);
+    }else if(dateUnit===DATE_UNIT_DAY){
+        currentDate.setDate( currentDate.getDate() - DAY_RANGE);
+    }
     
     var data = new Array;
     for(var i=0; i<DAY_RANGE+1; ++i){
-        var val = Math.floor(Math.random()*140) + 20;
+        var val;
+        
+        if(isWeight){
+            val = Math.floor(Math.random()*140) + 20;
+        }else{
+            val = Math.floor(Math.random()*1000) / 10;
+        }
         data[i] = [ currentDate.getTime(), val ];
         currentDate.setDate(currentDate.getDate()+1);
     }
     return data;
 }
 
-/***********************************************************************
- * 体脂肪ダミー取得
- * @param {type} now
- * @returns {Array}
- ***********************************************************************/
-function getDummyFat(now)
-{
-    var currentDate = new Date(now);
-    currentDate.setDate( currentDate.getDate() - DAY_RANGE);
-    
-    
-    var data = new Array;
-    for(var i=0; i<DAY_RANGE+1; ++i){
-        var val = Math.floor(Math.random()*1000) / 10;
-        data[i] = [ currentDate.getTime(), val ];
-        currentDate.setDate(currentDate.getDate()+1);
-    }
-    return data;
-}
 
 /***********************************************************************
  * 消費カロリーダミー取得
- * @param {type} now
+ * @param {Long} now
+ * @param {Boolean} dateUnit
  * @returns {Array}
  ***********************************************************************/
-function getDummyCalorie(now)
+function getDummyCalorie(now, dateUnit)
 {
     var days = new Array;
     var currentDay = new Date(now);
-    currentDay.setDate( currentDay.getDate()-DAY_RANGE);
-    for(var i =0; i < DAY_RANGE+1; ++i){
-        days[i] = new Date(currentDay).getTime();
-        currentDay.setDate( currentDay.getDate() + 1); //次の日へ
+    if(dateUnit===DATE_UNIT_HOUR){
+        currentDay.setHours( currentDay.getHours()-DAY_RANGE);
+        for(var i =0; i < DAY_RANGE+1; ++i){
+            days[i] = new Date(currentDay).getTime();
+            currentDay.setHours( currentDay.getHours() + 1); //次の時間へ
+        }
+        
+    }else if(dateUnit===DATE_UNIT_DAY){
+        currentDay.setDate( currentDay.getDate()-DAY_RANGE);
+        for(var i =0; i < DAY_RANGE+1; ++i){
+            days[i] = new Date(currentDay).getTime();
+            currentDay.setDate( currentDay.getDate() + 1); //次の日へ
+        }
     }
 
     var color = 'pink';
