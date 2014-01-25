@@ -38,12 +38,17 @@ var XAXIS_LABEL_DEFAULT_COLOR   = "#A1A5BA";        //!< X軸ラベルのデフ�
 var XAXIS_LABEL_SAT_COLOR       = "#68ACE4";        //!< X軸ラベルの土曜日色
 var XAXIS_LABEL_SUN_COLOR       = "#D9615C";        //!< X軸ラベルの日曜日色
 var YAXIS_LABEL_FONT_SIZE       = 4;                //!< Y軸ラベルのフォントサイズ
-var PREFETCH_LENGTH 			= 8;				//!< 現在時刻を選択できるように近い未来日まで読む必要があったので用意
+var PREFETCH_LENGTH 			= 12;//8;				//!< 現在時刻を選択できるように近い未来日まで読む必要があったので用意
 
 
 // 時間の単位列挙
 var DATE_UNIT_HOUR = 0;
 var DATE_UNIT_DAY = 1;
+
+// 画面表示直後のカーソル位置列挙
+var START_POSITION_NOW = 0;             //!< 現在時刻へカーソルをあわせる
+var START_POSITION_LEFT = 1;            //!< 画面一番左スタート
+var START_POSITION_RIGHT = 2;           //!< 画面一番右スタート
 
 // データの種類列挙
 var GRAPH_DATA_TYPE_BODY_COMPOSITION = 0;           //!< グラフデータの種類：体重・体脂肪
@@ -83,6 +88,12 @@ var graphType = 0;          //!< グラフの種類（GRAPH_TYPE_***）
 var dateUnit = 0;           //!< 時間の単位（DATE_UNIT_***)
 var targetLineBeginDate;    //!< 目標体重ラインの開始日
 var targetLineEndDate;      //!< 目標体重ラインの終了日
+var targetWeight;			//!< 目標体重
+var targetCalorieValue;		//!< 目標消費カロリー値 
+var graphDataAvg;			//!< グラフデータの平均値
+var graphDataMin;			//!< グラフデータの最小値
+var graphDataMax;			//!< グラフデータの最大値
+var startPosition;    //!< カーソルの開始位置
 
 var android;
 
@@ -94,15 +105,14 @@ var test=false;
 
 if(android===undefined){
     useDummyData = true;
+}else{
+    console.profile = function(name){};
+    console.profileEnd = function(){};
 }
 
 
 
 
-//TODO
-//Android側から単位の切り替え、データの切り替えを行うこと。
-//グラフの単位を時で動けるようにすること。
-//グラフの単位を日から時に変えれるようにすること
 
 
 /***************************************************************************
@@ -128,7 +138,10 @@ function onClickChangeType()
  ************************************************************************/
 $(function()
 {
-    beginLog('Begin onLoaded');
+    console.profile('Entry');
+    console.time('Entry');
+    console.group('Entry');
+    
     
     onInitializeEnv();
     
@@ -137,8 +150,11 @@ $(function()
     onInitializeGraph();
     
     onPostInitializeGraph();
- 
-    endLog('End onLoaded');
+    
+    
+    console.groupEnd();
+    console.timeEnd('Entry'); 
+    console.profileEnd();
 });
 
 /**
@@ -162,9 +178,7 @@ function onInitializeEnv()
  ***********************************************************************/
 function onPreInitializeGraph()
 {
-	console.group('onPreInitializeGraph');
-
-	beginLog('Begin onPreInitializeGraph');
+    console.groupCollapsed('onPreInitializeGraph');
 
     if(useDummyData){ 
         // JS上でパラメータを初期化
@@ -173,10 +187,15 @@ function onPreInitializeGraph()
         // Androidから初期化データを取得し、パラメータを初期化
         initGraphDataFromAndroid();
     }
+    
 
     // 現在日の取得(時・分・秒排除）
-    now = truncateTime( new Date(), dateUnit);
+    now = truncateTime(now, dateUnit);
+    console.log('now:'+now.toLocaleString());
     
+    // 先読み時間を初期化
+    PREFETCH_LENGTH = Math.floor( (dispWidth / XAXIS_WIDTH) * 0.8 );
+    nlog('PREFETCH_LENGTH:'+PREFETCH_LENGTH);
 
     // データの取得開始日と終了日を取得
     beginDate = new Date( now.getTime() - ((DAY_RANGE-PREFETCH_LENGTH) * ONE_DAY) );
@@ -222,13 +241,41 @@ function onPreInitializeGraph()
             {// 目標日までの理想線を破線ピンク色で表示
                 yAxis:0,
                 name : '目標線',
+                zIndex : 0,
                 color : 'pink',
                 dashStyle : 'dot',
                 marker:{ radius:3 },
-                zIndex : 0,
-                data:[84, 50],
-                pointStart      : targetLineBeginDate.getTime(),
-                pointInterval   : targetLineEndDate.getTime() - targetLineBeginDate.getTime()
+                data: (function(){
+                	if(weights && weights.length > 0){
+                                console.log('weight length:'+weights.length);
+                		var weight = weights[weights.length-1];
+                                
+
+                		var ret = [
+                                    {
+                    			color : 'pink',
+                    			x : weight.x,//targetLineBeginDate.getTime(),
+                    			y : weight.y
+                                    },        
+                                    {
+                    			color : 'pink',
+                    			x : targetLineEndDate.getTime(),
+                    			y : targetWeight
+                                    }        
+                                ];
+                		
+                		
+                		console.log('begin x:'+ret[0].x + ' y:'+ret[0].y);
+                		console.log('end x:'+ret[1].x + ' y:'+ret[1].y);
+
+                		return ret;
+//                		return [weight, targetWeight];
+                	}else{
+                		return null;
+                	}
+                })(),
+//                pointStart      : targetLineBeginDate.getTime(),
+//                pointInterval   : targetLineEndDate.getTime() - targetLineBeginDate.getTime()
             }
         ];
         
@@ -304,7 +351,7 @@ function initGraphDataFromAndroid()
  ***********************************************************************/
 function initGraphDataFromJs()
 {
-    beginLog('Begin initGraphDataFromJs');
+    console.groupCollapsed('initGraphDataFromJs');
     
     var data = getDummyJsonString();
     var tmp; 
@@ -313,8 +360,8 @@ function initGraphDataFromJs()
     
     // データをパラメータに反映させる
     setupFromReceiveData(tmp);
-    
-    endLog('End initGraphDataFromJs');
+
+    console.groupEnd();
 }
 /***********************************************************************
  * Androidから受け取ったパラメータをセットする
@@ -325,6 +372,7 @@ function setupFromReceiveData(rcvData)
     // リマップ作業：ジオメトリデータからオブジェクトデータへ変換する
     rcvData['targetLineBeginDate'] = new Date(rcvData['targetLineBeginDate']);
     rcvData['targetLineEndDate'] = new Date(rcvData['targetLineEndDate']);
+    rcvData['rootDate'] = new Date(rcvData['rootDate']);
     
     
     // JS側パラメータへ設定する
@@ -333,6 +381,42 @@ function setupFromReceiveData(rcvData)
     dateUnit = rcvData['dateUnit'];
     targetLineBeginDate = rcvData['targetLineBeginDate'];
     targetLineEndDate = rcvData['targetLineEndDate'];
+    targetWeight = rcvData['targetWeight'];
+    targetCalorieValue = rcvData['targetCalorieValue'];
+    now = rcvData['rootDate'];
+    console.log('rootDate:'+now.toLocaleString());
+    
+    startPosition = rcvData['startPosition'];
+
+    graphDataAvg = new Object;
+    graphDataMin = new Object;
+    graphDataMax = new Object;
+    graphDataAvg['calories'] = rcvData['caloriesAvg'];
+    graphDataMin['calories'] = rcvData['caloriesMin'];
+    graphDataMax['calories'] = rcvData['caloriesMax'];
+    graphDataAvg['weights'] = rcvData['weightsAvg'];
+    graphDataMin['weights'] = rcvData['weightsMin'];
+    graphDataMax['weights'] = rcvData['weightsMax'];
+    graphDataAvg['fats'] = rcvData['fatsAvg'];
+    graphDataMin['fats'] = rcvData['fatsMin'];
+    graphDataMax['fats'] = rcvData['fatsMax'];
+    
+
+    console.dir(graphDataMax);
+    console.log("graphDataAvg['calories']:"+graphDataAvg['calories']);
+    console.log("graphDataMin['calories']:"+graphDataMin['calories']);
+    console.log("graphDataMax['calories']:"+graphDataMax['calories']);
+    console.log("graphDataAvg['weights']:"+graphDataAvg['weights']);
+    console.log("graphDataMin['weights']:"+graphDataMin['weights']);
+    console.log("graphDataMax['weights']:"+graphDataMax['weights']);
+    console.log("graphDataAvg['fats']:"+graphDataAvg['fats']);
+    console.log("graphDataMin['fats']:"+graphDataMin['fats']);
+    console.log("graphDataMax['fats']:"+graphDataMax['fats']);
+    
+    console.log('targetLineBeginDate:'+targetLineBeginDate.toLocaleString());
+    console.log('targetLineEndDate:'+targetLineEndDate.toLocaleString());
+    console.log('targetWeight:'+targetWeight);
+    
     
    
     weights = rcvData['weights'];
@@ -349,7 +433,7 @@ function setupFromReceiveData(rcvData)
  * @returns {Date} 排除後のDate
  ***********************************************************************/
 function truncateTime(date, dateUnit){
-    if(dateUnit===DATE_UNIT_DAY){
+    if(dateUnit===DATE_UNIT_DAY){ 
         return new Date(date.getYear()+1900, date.getMonth(), date.getDate());
     }else if(dateUnit===DATE_UNIT_HOUR){
         return new Date(date.getYear()+1900, date.getMonth(), date.getDate(), date.getHours());
@@ -362,7 +446,7 @@ function truncateTime(date, dateUnit){
  ***********************************************************************/
 function onInitializeGraph()
 {
-    beginLog('Begin onInitializeGraph');
+    console.groupCollapsed('onInitializeGraph');
 
     //ローカルのロケールを使用
     Highcharts.setOptions({
@@ -457,19 +541,15 @@ function onInitializeGraph()
                 title : { text : null },
                 gridLineWidth:0,
                 labels : { enabled : false } // ラベル非表示
-            }
+            },
         ],
-
         // シリーズの設定
         series: series
     };
-    
-
     // グラフを作成
     chart = new Highcharts.Chart(options);
     
-
-    endLog('End onInitializeGraph');
+    console.groupEnd();
 }
 
 
@@ -479,8 +559,7 @@ function onInitializeGraph()
  ************************************************************************/
 function onChartLoad(event)
 {
-    beginLog('Begin onChartLoad');
-    
+    console.groupCollapsed('onChartLoad');
 
     // キャッシュ作成
     var chart = $('#container').highcharts();
@@ -490,50 +569,56 @@ function onChartLoad(event)
     for(var i=0,len=datas.length; i < len; ++i){
     	var data = datas[i];
     	if(data !== undefined){
-    	    cache[data.category] = data;
+    	    cache[data.category] = data; 
     	}
-   	}
-    nlog('cache:');
-   	console.dir(cache);
-
+    }
 
     // ピックラインの描画
     drawPickLine();
 
-//    var minMaxAvg = new Object;
-//    minMaxAvg = getMinMaxAvg(weights);
-//    yAxisLabelInfos[0]['min'] = minMaxAvg['min'];
-//    yAxisLabelInfos[0]['max'] = minMaxAvg['max'];
-//    yAxisLabelInfos[0]['avg'] = minMaxAvg['avg'];
-//        
-//
-//    minMaxAvg = getMinMaxAvg(fats);
-//    yAxisLabelInfos[1]['min'] = minMaxAvg['min'];
-//    yAxisLabelInfos[1]['max'] = minMaxAvg['max'];
-//    yAxisLabelInfos[1]['avg'] = minMaxAvg['avg'];
-     
-    var minMaxAvg = getMinMaxAvg(calories, true);
-    yAxisLabelInfos[0]['min'] = minMaxAvg['min'];
-    yAxisLabelInfos[0]['max'] = minMaxAvg['max'];
-    yAxisLabelInfos[0]['avg'] = minMaxAvg['avg'];
-     
-    // 渡されたY軸用ラベルと破線を描画する
+
+    // 平均・最大・最小線の描画
+    if(yAxisLabelInfos.length === 1){
+        yAxisLabelInfos[0]['min'] = graphDataMin['calories'];
+        yAxisLabelInfos[0]['max'] = graphDataMax['calories'];
+        yAxisLabelInfos[0]['avg'] = graphDataAvg['calories']; 
+    }else if(yAxisLabelInfos.length===2){
+        yAxisLabelInfos[0]['min'] = graphDataMin['weights'];
+        yAxisLabelInfos[0]['max'] = graphDataMax['weights'];
+        yAxisLabelInfos[0]['avg'] = graphDataAvg['weights'];
+        yAxisLabelInfos[1]['min'] = graphDataMin['fats'];
+        yAxisLabelInfos[1]['max'] = graphDataMax['fats'];
+        yAxisLabelInfos[1]['avg'] = graphDataAvg['fats'];
+	}
+        
+    // 目標線の描画
     var infos = yAxisLabelInfos;
+        
+     
     for(var i = 0, length = infos.length; i < length; ++i){
+    	var opposite = i%2===1;
         var info = infos[i];
         var color = info['color'];
         var axisId = info['axisId'];
-        drawYAxisLabel(axisId, info['min'], false, color); // 最小値
-        drawYAxisLabel(axisId, info['avg'], false, color); // 平均値
-        drawYAxisLabel(axisId, info['max'], false, color); // 最大値
+        drawYAxisLabel(axisId, info['min'], opposite, color, true,true,1); // 最小値
+        drawYAxisLabel(axisId, info['avg'], opposite, color, true,true,1); // 平均値
+        drawYAxisLabel(axisId, info['max'], opposite, color, true,true,1); // 最大値
+    }
+
+    var targetValue = targetCalorieValue;
+    if(targetValue > 0){
+        var axisId = info['axisId'];
+        drawYAxisLabel(axisId, targetValue, false, color, false,false,2); 
+        console.log('目標線の描画');
     }
 
 
-    drawYAxisLabel(0, 50, false,color); // 目標値
-    
-    
+     // スクロール位置からピッカーの位置を割り出して、選択している日付を算出する。
+     moveScrollByDate( now, dateUnit);
+     
 
-    endLog('End onChartLoad');
+    console.groupEnd();
+    console.dir(chart);
 }
 
 /***********************************************************************
@@ -542,23 +627,60 @@ function onChartLoad(event)
  ***********************************************************************/
 function onPostInitializeGraph()
 {
-    beginLog('Begin onPostInitializeGraph');
+    console.groupCollapsed('onPostInitializeGraph');
     
     // スクロールの移動コールバックを設定
     $(window).scroll(onMoveScroll); 
-     
-    $(window).scrollLeft(29596); // スクロールを一番右へ移動,値超えても止まる.
 
+
+    console.groupEnd();
+}
+
+/**
+ * 日付へスクロール移動.
+ * @param {Date} _date
+ * @param {Integer} dateUnit
+ */
+function moveScrollByDate(_date, dateUnit)
+{
+    console.groupCollapsed('moveScrollByDate');
     
-    endLog('End onPostInitializeGraph');
-} 
+    var scrollLeft = 0;
+    if(startPosition===START_POSITION_NOW){
+        var date = truncateTime(_date, dateUnit);
+        var diffDate = new Date(date - beginDate);
+        var diffHour = diffDate.getTime() / ONE_DAY;
+        console.log('開始日と今日の差分:'+diffHour+' 今日の日付:'+date.toLocaleString()+' 開始日:'+beginDate.toLocaleString());
+
+        if(dateUnit===DATE_UNIT_DAY){
+            scrollLeft = (graphTypeDependMargin + CHART_MARGIN_SIDE) + ((diffHour) * XAXIS_WIDTH);
+            scrollLeft -= (dispWidth/2) - (PICK_LINE_WIDTH/2);
+        }else if(dateUnit===DATE_UNIT_HOUR){
+            scrollLeft = (graphTypeDependMargin + CHART_MARGIN_SIDE) + ((diffHour) * XAXIS_WIDTH);
+            scrollLeft -= (dispWidth/2) - (PICK_LINE_WIDTH/2);
+        }
+    }else if(startPosition===START_POSITION_LEFT){
+        scrollLeft = 0;
+    }else if(startPosition===START_POSITION_RIGHT){
+        scrollRight = Number.MAX_VALUE;
+    }
+    
+    console.log("スクロール位置:"+scrollLeft);
+    $(window).scrollLeft(scrollLeft);
+    
+    console.groupEnd();
+}
 
 
+
+var isReadyGroup = false;
 /***********************************************************************
  * スクロールの移動直後
  ***********************************************************************/
 function onMoveScroll()
 {
+    console.time('onMoveScroll');
+    
     var log = '';
 
     // スクロール位置からピッカーの位置を割り出して、選択している日付を算出する。
@@ -580,18 +702,12 @@ function onMoveScroll()
     }else{
     	console.error('日付単位dateUnitが不正値:'+dateUnit);
     }
-    
     drawDebugLabel(date.toLocaleString());
 
 
     // グラフデータ配列のIndexを算出する
     date = truncateTime(date, dateUnit);
-//    var diffTime = date.getTime() - (beginDate.getTime()-(PREFETCH_LENGTH*ONE_DAY));
-//    var index = (diffTime / ONE_DAY) - 1; // -1 => 計算で参照位置がずれるため.詳細は未調査. 
-
     log += ' カーソルが選んでいる現在日付(補正済み):'+date.toString();
-//    log += ' DiffTime:'+diffTime;
-//    log += ' 算出されたグラフデータ配列のIndex:'+index;
 
     {// キャッシュからグラフデータを取得し,選択状態を更新する
     	var cacheKey = date.getTime();
@@ -600,13 +716,14 @@ function onMoveScroll()
             if(!data.selected){
                 data.select();
                 beforeSelectedGraphData = data;
+                console.log('data.pointWidth;'+data.pointWidth);
             }
         }else{
-        	if(beforeSelectedGraphData !== undefined){
-        		if(beforeSelectedGraphData.selected){
-        			beforeSelectedGraphData.select();
-        		}
-    		}
+            if(beforeSelectedGraphData !== undefined){
+      		if(beforeSelectedGraphData.selected){
+       			beforeSelectedGraphData.select();
+       		}
+            }
     	}
     }
 
@@ -643,6 +760,7 @@ function onMoveScroll()
     }
 
     nlog(log);
+    console.timeEnd('onMoveScroll');
 }
 
 /***********************************************************************
@@ -695,36 +813,53 @@ function drawPickLine(){
  * @param {String} value Y軸の値
  * @param {Boolean} opposite 右側に描画する
  * @param {String} color 色
+ * @param {Boolean} drawValue 数値を描画する
+ * @param {Boolean} dashStyle 線のスタイルはダッシュか？
+ * @param {Number} lineWidth 線の太さ 
  **********************************************************************/
-function drawYAxisLabel(yAxisId, value, opposite, color)
+function drawYAxisLabel(yAxisId, value, opposite, color, drawValue, dashStyle, lineWidth)
 {
     var chart = $('#container').highcharts();
 
     // テキストの描画
-    var cssAttr = {
-        'color'     : color,
-        'font-size' : YAXIS_LABEL_FONT_SIZE,
-        'position'  : 'fixed',
-        'top'       : chart.yAxis[yAxisId].toPixels(value) - (YAXIS_LABEL_FONT_SIZE+1)
-    };
-    cssAttr[opposite ? 'right' : 'left'] = YAXIS_LABEL_FONT_SIZE;
-    var label = $('<div>').text(value).css(cssAttr);
-    $('#container').after(label);    
+    if(drawValue){
+        var cssAttr = {
+            'color'     : color,
+            'font-size' : YAXIS_LABEL_FONT_SIZE,
+            'position'  : 'fixed',
+            'top'       : chart.yAxis[yAxisId].toPixels(value) - (YAXIS_LABEL_FONT_SIZE+1)
+        };
+        cssAttr[opposite ? 'right' : 'left'] = YAXIS_LABEL_FONT_SIZE;
+        var label = $('<div>').text(value).css(cssAttr);
+        $('#container').after(label);
+    }
+    
+    // 線のスタイル
+    var lineType='solid';
+    if(dashStyle){
+    	lineType='dashed';
+    }
+    
+    // 線の太さ
+    var lineWidthPx = lineWidth + 'px';
 
     // 破線の描画
     cssAttr = {
-        'width'     : '97%',
+        'width'     : '100%',
         'height'    : 1,
         'position'  : 'fixed',
         'top'       : chart.yAxis[yAxisId].toPixels(value),
-        'border-top': '1px dashed ' + color
+        'border-top': lineWidthPx + ' ' + lineType+' ' + color
     };
 
     // テキストの長さに応じて横線の位置をズラす
-    var offset = value.toString().length * YAXIS_LABEL_FONT_SIZE*2;
-    cssAttr[opposite ? 'right' : 'left'] = offset;
-    var dashLine = $('<div>').css(cssAttr);
-    $('#container').after(dashLine);
+    if(value!==undefined){
+        var offset = value.toString().length * YAXIS_LABEL_FONT_SIZE*1.5;
+        if(!drawValue){offset=0;} 	
+        cssAttr[opposite ? 'right' : 'left'] = offset;
+        var dashLine = $('<div>').css(cssAttr);
+        $('#container').after(dashLine);
+    }
 };
 
 
@@ -794,17 +929,19 @@ function getDummyJsonString()
 {
     var result = new Object();
 //    result['graphType']             = GRAPH_TYPE_COLUMN;
-    result['dateUnit']  = DATE_UNIT_HOUR;
+    result['dateUnit']  = DATE_UNIT_DAY;// DATE_UNIT_HOUR;
     
     dateUnit = result['dateUnit'];
     configureConstantParameter(dateUnit);
     
-    now = truncateTime(new Date(), dateUnit);
+    now = new Date();
+    now = truncateTime(now, dateUnit);
+    
     result['targetLineBeginDate']   = now.getTime();
     result['targetLineEndDate']     = new Date().setDate(now.getDate() + 1);
     result['graphDataType']         = GRAPH_DATA_TYPE_CALORIE; //GRAPH_DATA_TYPE_BODY_COMPOSITION;
     
-    
+    result['rootDate']              = now;
     result['calories']              = getDummyCalorie(now, dateUnit);
     result['fats']                  = getDummyBodyComposition(now, dateUnit, false);
     result['weights']               = getDummyBodyComposition(now, dateUnit, true);
@@ -812,10 +949,13 @@ function getDummyJsonString()
     return JSON.stringify(result);
 }
 
-/***************************************************************************
+/*****************************************************************************
  * 固定パラメータの設定
  * 日付のタイプから固定パラメータを修正する.
- **************************************************************************/
+ * 
+ * @param {Integer} dateUnit
+ * @returns {undefined}
+ ****************************************************************************/
 function configureConstantParameter(dateUnit)
 {
     if(dateUnit===DATE_UNIT_HOUR){
@@ -889,9 +1029,14 @@ function getDummyCalorie(now, dateUnit)
     var color = 'pink';
     var data = new Array;
     for(var i=0; i<DAY_RANGE+1; i++){
+//        console.log(new Date(days[i]).toLocaleString());
         var weight = Math.floor(Math.random()*90000) / 10;
+//        if(i < DAY_RANGE-3){
+//            weight = null;
+//        }
         data[i] = new Object;
         data[i] = { color : color, x : days[i], y : weight};
+        
     }
     
     return data;
