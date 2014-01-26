@@ -8,12 +8,8 @@
  *************************************************************/
 
 /******************************
- * テストデータ
+ * グラフデータ
  *****************************/
-var weights;
-var fats;
-var calories;
-var graphDataCache = new Object;    
 
 
 /******************************
@@ -64,7 +60,7 @@ var XAXIS_WIDTH_ADJUST_LINE     = 0;                //!< グラフポイント�
 var XAXIS_WIDTH_ADJUST_COLUMN   = 0;//-0.081;//-0.091;           //!< グラフポイント間の調整値_棒グラフ
 
 /******************************
- * グローバル変数(js内で使用する)
+ * グローバル変数(js内で初期化する)
  *****************************/
 var chart;                  //!< チャートインスタンス
 var now;                    //!< 今の日付（年、月、日のみ）
@@ -73,7 +69,7 @@ var dispHeight;             //!< ブラウザの高さ
 var beginDate;              //!< データの取得開始日
 var endDate;                //!< データの取得終了日
 var contentWidth;           //!< コンテナの幅
-var series;
+var series;                 //!< グラフに表示させるための情報
 var yAxisLabelInfos;        //!< Y軸ラベルの情報一覧
 var beforeSelectedDate;		//!< １つ前に選択していた日付
 var graphTypeDependMargin = 0;  //!< グラフタイプ依存のマージン値
@@ -88,12 +84,19 @@ var graphType = 0;          //!< グラフの種類（GRAPH_TYPE_***）
 var dateUnit = 0;           //!< 時間の単位（DATE_UNIT_***)
 var targetLineBeginDate;    //!< 目標体重ラインの開始日
 var targetLineEndDate;      //!< 目標体重ラインの終了日
-var targetWeight;			//!< 目標体重
-var targetCalorieValue;		//!< 目標消費カロリー値 
-var graphDataAvg;			//!< グラフデータの平均値
-var graphDataMin;			//!< グラフデータの最小値
-var graphDataMax;			//!< グラフデータの最大値
-var startPosition;    //!< カーソルの開始位置
+var targetBeginWeight;      //!< 体重開始した日の体重
+var targetWeight;           //!< 目標体重
+var targetCalorieValue;     //!< 目標消費カロリー値 
+var graphDataAvg;           //!< グラフデータの平均値
+var graphDataMin;           //!< グラフデータの最小値
+var graphDataMax;           //!< グラフデータの最大値
+var startPosition;          //!< カーソルの開始位置
+
+var weights;                        //!< 体重データ一覧
+var fats;                           //!< 体脂肪データ一覧
+var calories;                       //!< カロリーデータ一覧
+var graphDataCache = new Object;    //!< データのキャシュ
+
 
 var android;
 
@@ -128,8 +131,9 @@ function onClickChangeType()
 
     onInitializeGraph();
     
-    onPostInitializeGraph();
 }
+
+
 
 /*************************************************************************
  * エントリー関数
@@ -143,13 +147,12 @@ $(function()
     console.group('Entry');
     
     
-    onInitializeEnv();
+    onInitializeOnceType();
     
     onPreInitializeGraph();
 
     onInitializeGraph();
     
-    onPostInitializeGraph();
     
     
     console.groupEnd();
@@ -160,7 +163,7 @@ $(function()
 /**
  * 環境パラメタ類の初期化
  */
-function onInitializeEnv()
+function onInitializeOnceType()
 {
     // ブラウザの幅・高さを取得
     // ブラウザは一度グラフを描画した後に、再度取得すると何故か幅が広くなっている。
@@ -179,6 +182,7 @@ function onInitializeEnv()
 function onPreInitializeGraph()
 {
     console.groupCollapsed('onPreInitializeGraph');
+    console.time('onPreInitializeGraph');
 
     if(useDummyData){ 
         // JS上でパラメータを初期化
@@ -194,19 +198,16 @@ function onPreInitializeGraph()
     console.log('now:'+now.toLocaleString());
     
     // 先読み時間を初期化
-    PREFETCH_LENGTH = Math.floor( (dispWidth / XAXIS_WIDTH) * 0.8 );
-    nlog('PREFETCH_LENGTH:'+PREFETCH_LENGTH);
+    PREFETCH_LENGTH = Math.floor( (dispWidth / XAXIS_WIDTH) * 0.8 ); // 0.8 => 調整.
+    console.log('先読み時間:'+PREFETCH_LENGTH);
 
     // データの取得開始日と終了日を取得
     beginDate = new Date( now.getTime() - ((DAY_RANGE-PREFETCH_LENGTH) * ONE_DAY) );
     endDate   = new Date( now.getTime() + (PREFETCH_LENGTH * ONE_DAY) );
-    nlog('データ取得の開始と終了日:'+beginDate.toLocaleString()+' : '+endDate.toLocaleString());
-
+    console.info('データ取得の開始と終了日:'+beginDate.toLocaleString()+' : '+endDate.toLocaleString());
     var diff = endDate.getDate() - beginDate.getDate();
-    nlog('範囲:'+diff);
+    console.debug('データ取得範囲(日):'+diff);
     
-    
-
     // グラフを描画するためのコンテンツ幅を設定する
     // コンテンツ幅は、棒グラフマージン、チャートマージン、チャート幅を考慮している。
     // コンテンツ領域内でグラフは描画される。
@@ -216,7 +217,7 @@ function onPreInitializeGraph()
     }
     contentWidth = (XAXIS_WIDTH * DAY_RANGE) + (graphTypeDependMargin*2) + (CHART_MARGIN_SIDE*2);
     $('#container').css('width', contentWidth );
-    nlog('コンテンツ幅:'+contentWidth);
+    console.info('コンテンツ幅:'+contentWidth);
     
     // seriesの設定
     series = new Array;
@@ -245,37 +246,23 @@ function onPreInitializeGraph()
                 color : 'pink',
                 dashStyle : 'dot',
                 marker:{ radius:3 },
-                data: (function(){
-                	if(weights && weights.length > 0){
-                                console.log('weight length:'+weights.length);
-                		var weight = weights[weights.length-1];
-                                
+                data: (function()
+                {
+                    var ret = [
+                        {
+                            color : 'pink',
+                            x : targetLineBeginDate.getTime(),
+                            y : targetBeginWeight
+                        },        
+                        {
+                            color : 'pink',
+                            x : targetLineEndDate.getTime(),
+                            y : targetWeight
+                        }        
+                    ];
 
-                		var ret = [
-                                    {
-                    			color : 'pink',
-                    			x : weight.x,//targetLineBeginDate.getTime(),
-                    			y : weight.y
-                                    },        
-                                    {
-                    			color : 'pink',
-                    			x : targetLineEndDate.getTime(),
-                    			y : targetWeight
-                                    }        
-                                ];
-                		
-                		
-                		console.log('begin x:'+ret[0].x + ' y:'+ret[0].y);
-                		console.log('end x:'+ret[1].x + ' y:'+ret[1].y);
-
-                		return ret;
-//                		return [weight, targetWeight];
-                	}else{
-                		return null;
-                	}
+                    return ret;
                 })(),
-//                pointStart      : targetLineBeginDate.getTime(),
-//                pointInterval   : targetLineEndDate.getTime() - targetLineBeginDate.getTime()
             }
         ];
         
@@ -321,7 +308,7 @@ function onPreInitializeGraph()
         ];        
     }
 
-    endLog('End onPreInitializeGraph');
+    console.timeEnd();
     console.groupEnd();
 }
 
@@ -355,8 +342,28 @@ function initGraphDataFromJs()
     
     var data = getDummyJsonString();
     var tmp; 
-    eval("tmp="+data); 
+    eval("tmp = "+data); 
     nlog("Generated Json Dummy Datas = "+data); 
+    
+    
+    
+    var fats = tmp.fats;
+    for(var i=0; i<fats.length; ++i){
+        var fat = fats[i];
+        if(fat==null){
+            fats.splice(i,1);
+        }
+    }
+    fats = tmp.weights;
+    for(var i=0; i<fats.length; ++i){
+        var fat = fats[i];
+        if(fat==null){
+            fats.splice(i,1);
+        }
+    }
+    
+    
+    
     
     // データをパラメータに反映させる
     setupFromReceiveData(tmp);
@@ -381,6 +388,7 @@ function setupFromReceiveData(rcvData)
     dateUnit = rcvData['dateUnit'];
     targetLineBeginDate = rcvData['targetLineBeginDate'];
     targetLineEndDate = rcvData['targetLineEndDate'];
+    targetBeginWeight = rcvData['targetBeginWeight'];
     targetWeight = rcvData['targetWeight'];
     targetCalorieValue = rcvData['targetCalorieValue'];
     now = rcvData['rootDate'];
@@ -541,7 +549,7 @@ function onInitializeGraph()
                 title : { text : null },
                 gridLineWidth:0,
                 labels : { enabled : false } // ラベル非表示
-            },
+            }
         ],
         // シリーズの設定
         series: series
@@ -615,26 +623,16 @@ function onChartLoad(event)
 
      // スクロール位置からピッカーの位置を割り出して、選択している日付を算出する。
      moveScrollByDate( now, dateUnit);
-     
+
+    
+    // スクロールの移動コールバックを設定
+    $(window).scroll(onMoveScroll); 
+    
 
     console.groupEnd();
     console.dir(chart);
 }
 
-/***********************************************************************
- * グラフ初期化の直後<br>
- * グラフの読み込み処理が完了した場合は、{onChartLoad}になります。
- ***********************************************************************/
-function onPostInitializeGraph()
-{
-    console.groupCollapsed('onPostInitializeGraph');
-    
-    // スクロールの移動コールバックを設定
-    $(window).scroll(onMoveScroll); 
-
-
-    console.groupEnd();
-}
 
 /**
  * 日付へスクロール移動.
@@ -853,7 +851,7 @@ function drawYAxisLabel(yAxisId, value, opposite, color, drawValue, dashStyle, l
     };
 
     // テキストの長さに応じて横線の位置をズラす
-    if(value!==undefined){
+    if(value!==undefined && value !== null){ 
         var offset = value.toString().length * YAXIS_LABEL_FONT_SIZE*1.5;
         if(!drawValue){offset=0;} 	
         cssAttr[opposite ? 'right' : 'left'] = offset;
@@ -918,37 +916,6 @@ function getXAxisLabel(value, dateUnit)
 }
 
 
-
-
-
-/***********************************************************************
- * JSONダミー取得
- * @returns {String} JSON
- **********************************************************************/
-function getDummyJsonString()
-{
-    var result = new Object();
-//    result['graphType']             = GRAPH_TYPE_COLUMN;
-    result['dateUnit']  = DATE_UNIT_DAY;// DATE_UNIT_HOUR;
-    
-    dateUnit = result['dateUnit'];
-    configureConstantParameter(dateUnit);
-    
-    now = new Date();
-    now = truncateTime(now, dateUnit);
-    
-    result['targetLineBeginDate']   = now.getTime();
-    result['targetLineEndDate']     = new Date().setDate(now.getDate() + 1);
-    result['graphDataType']         = GRAPH_DATA_TYPE_CALORIE; //GRAPH_DATA_TYPE_BODY_COMPOSITION;
-    
-    result['rootDate']              = now;
-    result['calories']              = getDummyCalorie(now, dateUnit);
-    result['fats']                  = getDummyBodyComposition(now, dateUnit, false);
-    result['weights']               = getDummyBodyComposition(now, dateUnit, true);
-
-    return JSON.stringify(result);
-}
-
 /*****************************************************************************
  * 固定パラメータの設定
  * 日付のタイプから固定パラメータを修正する.
@@ -963,8 +930,58 @@ function configureConstantParameter(dateUnit)
         ONE_DAY = 1 * 60 * 60 * 1000; // 1Hour
         XAXIS_WIDTH = 25;
         COLUMN_MARGIN_SIDE = 11;         
-        
     }
+}
+
+
+
+
+
+/***********************************************************************
+ * JSONダミー取得
+ * @returns {String} JSON
+ **********************************************************************/
+function getDummyJsonString()
+{
+    var result = new Object();
+    result['dateUnit']  = DATE_UNIT_DAY;// DATE_UNIT_HOUR;
+    
+    dateUnit = result['dateUnit'];
+    configureConstantParameter(dateUnit);
+    
+    now = new Date();
+    now = truncateTime(now, dateUnit);
+    
+    var begin = new Date(now);
+    begin.setDate(begin.getDate() - 60);
+    result['targetLineBeginDate']   = begin;
+    var end = new Date(now); end.setDate(end.getDate() + 3);
+    result['targetLineEndDate']     = end.getTime();
+    result['targetBeginWeight']     = 90;
+    result['targetWeight']          = 70;
+    result['graphDataType']         = GRAPH_DATA_TYPE_BODY_COMPOSITION;
+    
+    result['rootDate']              = now;
+    result['calories']              = getDummyCalorie(now, dateUnit);
+    result['fats']                  = getDummyBodyComposition(now, false);
+    result['weights']               = getDummyBodyComposition(now, true);
+    
+    var minMaxAvg = getMinMaxAvg(result['weights']);
+    result['weightsAvg'] = minMaxAvg.avg;
+    result['weightsMin'] = minMaxAvg.min;
+    result['weightsMax'] = minMaxAvg.max;
+    
+    minMaxAvg = getMinMaxAvg(result['fats']);
+    result['fatsAvg'] = minMaxAvg.avg;
+    result['fatsMin'] = minMaxAvg.min;
+    result['fatsMax'] = minMaxAvg.max;
+
+    minMaxAvg = getMinMaxAvg(result['calories']);
+    result['caloriesAvg'] = minMaxAvg.avg;
+    result['caloriesMin'] = minMaxAvg.min;
+    result['caloriesMax'] = minMaxAvg.max;
+
+    return JSON.stringify(result);
 }
 
 
@@ -972,31 +989,38 @@ function configureConstantParameter(dateUnit)
 /*************************************************************************
  * 体重or体脂肪のダミーデータ取得
  * @param {type} now
- * @param {Integer} dateUnit    日付の単位
  * @param {Boolean} isWeight 体重データを取得するか？
  * @returns {Array}
  ************************************************************************/
-function getDummyBodyComposition(now, dateUnit, isWeight)
+function getDummyBodyComposition(now, isWeight)
 {
-    var currentDate = new Date(now);
-    if(dateUnit===DATE_UNIT_HOUR){
-        currentDate.setHours( currentDate.getHours() - DAY_RANGE);
-    }else if(dateUnit===DATE_UNIT_DAY){
-        currentDate.setDate( currentDate.getDate() - DAY_RANGE);
+    var days = new Array;
+    var currentDay = new Date(now);
+    currentDay.setDate( currentDay.getDate()-DAY_RANGE);
+    for(var i =0; i < DAY_RANGE+1; ++i){
+        days[i] = new Date(currentDay).getTime();
+        currentDay.setDate( currentDay.getDate() + 1); //次の日へ
+    }
+
+    var color = isWeight?'pink':'blue';
+    var data = new Array;
+    for(var i=0; i<DAY_RANGE+1; i++){
+        
+        
+        
+        if(i % 3!==0){
+            var val;
+            if(isWeight){
+                val = Math.floor(Math.random()*90000) / 10;
+            }else{
+                val = Math.floor(Math.random()*1000) / 10;
+            }
+            data[i] = new Object;
+            data[i] = { color : color, x : days[i], y : val};
+        }else{
+        }
     }
     
-    var data = new Array;
-    for(var i=0; i<DAY_RANGE+1; ++i){
-        var val;
-        
-        if(isWeight){
-            val = Math.floor(Math.random()*140) + 20;
-        }else{
-            val = Math.floor(Math.random()*1000) / 10;
-        }
-        data[i] = [ currentDate.getTime(), val ];
-        currentDate.setDate(currentDate.getDate()+1);
-    }
     return data;
 }
 
@@ -1029,14 +1053,9 @@ function getDummyCalorie(now, dateUnit)
     var color = 'pink';
     var data = new Array;
     for(var i=0; i<DAY_RANGE+1; i++){
-//        console.log(new Date(days[i]).toLocaleString());
         var weight = Math.floor(Math.random()*90000) / 10;
-//        if(i < DAY_RANGE-3){
-//            weight = null;
-//        }
         data[i] = new Object;
         data[i] = { color : color, x : days[i], y : weight};
-        
     }
     
     return data;
@@ -1045,10 +1064,9 @@ function getDummyCalorie(now, dateUnit)
 /***********************************************************************
  * 最小・最大・平均の取得
  * @param {type} datas
- * @param {type} isMap
  * @returns {getMinMaxAvg.Anonym$15}
  ***********************************************************************/
-function getMinMaxAvg(datas, isMap)
+function getMinMaxAvg(datas)
 {
     var min = Number.MAX_VALUE;
     var max = 0;
@@ -1056,20 +1074,23 @@ function getMinMaxAvg(datas, isMap)
     
     if(datas){
         var len = datas.length;
+        var validCount = 0;
         for(var i = 0; i < len; ++i){
-            var data;
-            if(isMap){
-                data = datas[i]['y'];
-            }else{
-                data = datas[i][1];
+            var data = datas[i];
+            if(data !== undefined && data !== null){
+                var val = data.y;
+                min = Math.min(min, val);
+                max = Math.max(max, val);
+                avg += val;
+                validCount++;
             }
-
-            min = Math.min(min, data);
-            max = Math.max(max, data);
-            avg += data;
         }
-        avg = avg / len;
-        avg = avg.toFixed(1);
+        if(validCount > 0){
+            avg = avg / validCount;
+            avg = avg.toFixed(1);
+            min = min.toFixed(1);
+            max = max.toFixed(1);
+        }
     }
     
     return {
